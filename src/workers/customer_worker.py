@@ -5,10 +5,8 @@ Background worker for creating customers, jobs, and sub-jobs in QuickBooks.
 """
 
 from tkinter import messagebox
-from qb_ipc_client import QBIPCClient, disconnect_qb
-from qb_connection import QBConnectionError
-from qbxml_builder import QBXMLBuilder
-from qbxml_parser import QBXMLParser
+from qb import QBIPCClient, disconnect_qb, QBXMLBuilder, QBXMLParser
+from qb.connection import QBConnectionError
 from mock_generation import CustomerGenerator
 from store import add_customer
 from app_logging import LOG_NORMAL, LOG_VERBOSE

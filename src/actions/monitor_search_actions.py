@@ -8,9 +8,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 from datetime import datetime
-from qb_ipc_client import QBIPCClient
-from qbxml_builder import QBXMLBuilder
-from qbxml_parser import QBXMLParser
+from qb import QBIPCClient, QBXMLBuilder, QBXMLParser
 
 
 def search_transactions(app):

@@ -5,7 +5,7 @@ Handles graceful and forced shutdown of the connection manager daemon.
 """
 
 from config import AppConfig
-from qb_ipc_client import stop_manager
+from qb import stop_manager
 
 
 def on_closing(app):
@@ -64,7 +64,7 @@ def force_close(app):
         app.tray_icon.set_state('yellow')
 
     # Import for process termination
-    from qb_ipc_client import _manager_process
+    from qb.ipc_client import _manager_process
 
     # Kill manager process immediately
     if _manager_process and _manager_process.is_alive():

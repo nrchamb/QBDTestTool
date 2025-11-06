@@ -17,10 +17,8 @@ from store import (
     set_monitoring, add_verification_result, set_expected_deposit_account
 )
 from config import AppConfig
-from qb_connection import QBConnectionError
-from qb_ipc_client import QBIPCClient, start_manager, stop_manager
-from qbxml_builder import QBXMLBuilder
-from qbxml_parser import QBXMLParser
+from qb import QBIPCClient, QBXMLBuilder, QBXMLParser, DataLoader, start_manager, stop_manager
+from qb.connection import QBConnectionError
 from trayapp import TrayIconManager, on_closing, force_close
 from ui.create_tab_setup import setup_create_tab
 from ui.monitor_tab_setup import setup_monitor_tab
@@ -30,7 +28,6 @@ from app_logging import log_create, log_monitor
 from ui.ui_utils import create_scrollable_frame
 from actions.customer_actions import create_customer, update_customer_combo
 from actions.monitor_actions import update_accounts_combo
-from qb_data_loader import QBDataLoader
 from workers import (
     load_items_worker, load_terms_worker, load_classes_worker, load_accounts_worker,
     load_customers_worker, load_all_worker, create_customer_worker, create_invoice_worker,
@@ -221,6 +218,30 @@ class QBDTestToolApp:
         """Silently auto-save session in background (no user interruption)."""
         from workers.session_worker import save_session_worker
         thread = threading.Thread(target=save_session_worker, args=(self, True), daemon=True)
+        thread.start()
+
+    def _archive_closed_transactions(self):
+        """Mark closed/paid transactions as archived (wrapper - launches background thread)."""
+        from workers.cleanup_worker import archive_closed_worker
+        thread = threading.Thread(target=archive_closed_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _archive_all_transactions(self):
+        """Mark all transactions as archived (wrapper - launches background thread)."""
+        from workers.cleanup_worker import archive_all_worker
+        thread = threading.Thread(target=archive_all_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _delete_archived_from_qb(self):
+        """Delete archived transactions from QuickBooks (wrapper - launches background thread)."""
+        from workers.cleanup_worker import delete_archived_from_qb_worker
+        thread = threading.Thread(target=delete_archived_from_qb_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _remove_archived_from_session(self):
+        """Remove archived transactions from session (wrapper - launches background thread)."""
+        from workers.cleanup_worker import remove_archived_worker
+        thread = threading.Thread(target=remove_archived_worker, args=(self,), daemon=True)
         thread.start()
 
     def _check_and_load_session(self):

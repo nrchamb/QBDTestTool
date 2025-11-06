@@ -110,3 +110,19 @@ def update_last_sync(timestamp: datetime) -> Dict[str, Any]:
 def set_expected_deposit_account(account_name: str) -> Dict[str, Any]:
     """Create SET_EXPECTED_DEPOSIT_ACCOUNT action."""
     return {'type': 'SET_EXPECTED_DEPOSIT_ACCOUNT', 'payload': account_name}
+
+
+# Cleanup/Archive actions
+def archive_closed_transactions() -> Dict[str, Any]:
+    """Create ARCHIVE_CLOSED_TRANSACTIONS action (marks closed/paid as archived)."""
+    return {'type': 'ARCHIVE_CLOSED_TRANSACTIONS', 'payload': None}
+
+
+def archive_all_transactions() -> Dict[str, Any]:
+    """Create ARCHIVE_ALL_TRANSACTIONS action (marks all transactions as archived)."""
+    return {'type': 'ARCHIVE_ALL_TRANSACTIONS', 'payload': None}
+
+
+def remove_all_archived() -> Dict[str, Any]:
+    """Create REMOVE_ALL_ARCHIVED action (removes archived from session)."""
+    return {'type': 'REMOVE_ALL_ARCHIVED', 'payload': None}

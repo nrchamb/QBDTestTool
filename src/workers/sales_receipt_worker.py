@@ -6,9 +6,7 @@ Background worker for creating batch sales receipts in QuickBooks.
 
 from datetime import datetime
 from tkinter import messagebox
-from qb_ipc_client import QBIPCClient, disconnect_qb
-from qbxml_builder import QBXMLBuilder
-from qbxml_parser import QBXMLParser
+from qb import QBIPCClient, disconnect_qb, QBXMLBuilder, QBXMLParser
 from mock_generation import SalesReceiptGenerator
 from store.state import SalesReceiptRecord
 from store.actions import add_sales_receipt

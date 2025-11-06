@@ -25,6 +25,7 @@ class InvoiceRecord:
     created_by_app: bool = True  # Flag to indicate app created this
     edit_sequence: str = None  # QB version token for change detection
     time_modified: str = None  # Last modified timestamp from QB
+    archived: bool = False  # Temporary flag for cleanup (before removal from session)
 
 
 @dataclass
@@ -43,6 +44,7 @@ class SalesReceiptRecord:
     created_by_app: bool = True  # Flag to indicate app created this
     edit_sequence: str = None  # QB version token for change detection
     time_modified: str = None  # Last modified timestamp from QB
+    archived: bool = False  # Temporary flag for cleanup (before removal from session)
 
 
 @dataclass
@@ -52,12 +54,15 @@ class StatementChargeRecord:
     ref_number: str
     customer_name: str
     amount: float
-    status: str  # Always 'completed' for charges
+    status: str  # 'open', 'closed'
     created_at: datetime
     last_checked: datetime = None
+    deposit_account: str = None
+    payment_info: Dict[str, Any] = field(default_factory=dict)
     created_by_app: bool = True  # Flag to indicate app created this
     edit_sequence: str = None  # QB version token for change detection
     time_modified: str = None  # Last modified timestamp from QB
+    archived: bool = False  # Temporary flag for cleanup (before removal from session)
 
 
 @dataclass

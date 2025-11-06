@@ -5,9 +5,8 @@ Background workers for loading data from QuickBooks (items, terms, classes, acco
 """
 
 from tkinter import messagebox
-from qb_data_loader import QBDataLoader
+from qb import DataLoader, disconnect_qb
 from store import set_items, set_terms, set_classes, set_accounts
-from qb_ipc_client import disconnect_qb
 from app_logging import LOG_NORMAL, LOG_VERBOSE
 
 
@@ -17,7 +16,7 @@ def load_items_worker(app):
         app.root.after(0, lambda: app._log_create("Loading items from QuickBooks..."))
 
         # Load items from QuickBooks
-        result = QBDataLoader.load_items()
+        result = DataLoader.load_items()
 
         if result['success']:
             items = result['data']
@@ -63,7 +62,7 @@ def load_terms_worker(app):
         app.root.after(0, lambda: app._log_create("Loading terms from QuickBooks..."))
 
         # Load terms from QuickBooks
-        result = QBDataLoader.load_terms()
+        result = DataLoader.load_terms()
 
         if result['success']:
             terms = result['data']
@@ -101,7 +100,7 @@ def load_classes_worker(app):
         app.root.after(0, lambda: app._log_create("Loading classes from QuickBooks..."))
 
         # Load classes from QuickBooks
-        result = QBDataLoader.load_classes()
+        result = DataLoader.load_classes()
 
         if result['success']:
             classes = result['data']
@@ -139,7 +138,7 @@ def load_accounts_worker(app):
         app.root.after(0, lambda: app._log_create("Loading accounts from QuickBooks..."))
 
         # Load accounts from QuickBooks (filtered for deposit accounts)
-        result = QBDataLoader.load_accounts(filter_deposit_accounts=True)
+        result = DataLoader.load_accounts(filter_deposit_accounts=True)
 
         if result['success']:
             deposit_accounts = result['data']
@@ -176,7 +175,7 @@ def load_customers_worker(app):
         app.root.after(0, lambda: app._log_create("Loading customers from QuickBooks..."))
 
         # Load customers from QuickBooks (already marked with created_by_app = False)
-        result = QBDataLoader.load_customers()
+        result = DataLoader.load_customers()
 
         if result['success']:
             loaded_customers = result['data']
@@ -209,7 +208,7 @@ def load_all_worker(app):
 
         # Load customers
         app.root.after(0, lambda: app._log_create("Loading customers...", LOG_VERBOSE))
-        result = QBDataLoader.load_customers()
+        result = DataLoader.load_customers()
         if result['success']:
             app.store.dispatch({'type': 'SET_CUSTOMERS', 'payload': result['data']})
             app.root.after(0, lambda: app._log_create(f"✓ Loaded {result['count']} customers", LOG_VERBOSE))
@@ -219,7 +218,7 @@ def load_all_worker(app):
 
         # Load items
         app.root.after(0, lambda: app._log_create("Loading items...", LOG_VERBOSE))
-        result = QBDataLoader.load_items()
+        result = DataLoader.load_items()
         if result['success']:
             app.store.dispatch(set_items(result['data']))
             count = result['count']
@@ -232,7 +231,7 @@ def load_all_worker(app):
 
         # Load terms
         app.root.after(0, lambda: app._log_create("Loading terms...", LOG_VERBOSE))
-        result = QBDataLoader.load_terms()
+        result = DataLoader.load_terms()
         if result['success']:
             terms = result['data']
             app.store.dispatch(set_terms(terms))
@@ -248,7 +247,7 @@ def load_all_worker(app):
 
         # Load classes
         app.root.after(0, lambda: app._log_create("Loading classes...", LOG_VERBOSE))
-        result = QBDataLoader.load_classes()
+        result = DataLoader.load_classes()
         if result['success']:
             classes = result['data']
             app.store.dispatch(set_classes(classes))
@@ -264,7 +263,7 @@ def load_all_worker(app):
 
         # Load accounts
         app.root.after(0, lambda: app._log_create("Loading accounts...", LOG_VERBOSE))
-        result = QBDataLoader.load_accounts(filter_deposit_accounts=True)
+        result = DataLoader.load_accounts(filter_deposit_accounts=True)
         if result['success']:
             app.store.dispatch(set_accounts(result['data']))
             count = result['count']

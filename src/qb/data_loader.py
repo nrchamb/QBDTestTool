@@ -6,13 +6,13 @@ Separated from UI/threading concerns for better testability and maintainability.
 """
 
 from typing import Dict, List, Any
-from qb_ipc_client import QBIPCClient
-from qb_connection import QBConnectionError
-from qbxml_builder import QBXMLBuilder
-from qbxml_parser import QBXMLParser
+from .ipc_client import QBIPCClient
+from .connection import QBConnectionError
+from .xml_builder import QBXMLBuilder
+from .xml_parser import QBXMLParser
 
 
-class QBDataLoader:
+class DataLoader:
     """
     Handles QuickBooks data loading operations.
 

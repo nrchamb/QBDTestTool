@@ -6,9 +6,7 @@ Background worker for monitoring transactions and verifying payment posting.
 
 import time
 from datetime import datetime
-from qb_ipc_client import QBIPCClient
-from qbxml_builder import QBXMLBuilder
-from qbxml_parser import QBXMLParser
+from qb import QBIPCClient, QBXMLBuilder, QBXMLParser
 from store import (
     InvoiceRecord, SalesReceiptRecord, StatementChargeRecord,
     update_invoice, update_sales_receipt, update_statement_charge, add_verification_result
@@ -179,18 +177,27 @@ def check_statement_charges(app):
             if parser_result['success'] and parser_result['data']['charges']:
                 qb_charge = parser_result['data']['charges'][0]
 
-                # Verify transaction on first check
-                if charge.last_checked is None:
+                # Check for status change
+                new_status = 'closed' if qb_charge['is_paid'] else 'open'
+                old_status = charge.status
+
+                if new_status != old_status:
+                    app.root.after(0, lambda c=charge, ns=new_status, os=old_status:
+                                  app._log_monitor(f"Status change detected: {c.ref_number} (Statement Charge) ({os} → {ns})"))
+
+                    # Verify transaction
                     verify_transaction(app, charge, qb_charge, 'Statement Charge')
 
                 updated_charge = StatementChargeRecord(
                     txn_id=charge.txn_id,
-                    ref_number=charge.ref_number,
+                    ref_number=qb_charge.get('ref_number', charge.ref_number),
                     customer_name=charge.customer_name,
                     amount=charge.amount,
-                    status='completed',
+                    status=new_status,
                     created_at=charge.created_at,
-                    last_checked=datetime.now()
+                    last_checked=datetime.now(),
+                    deposit_account=qb_charge.get('deposit_account', {}).get('full_name') if 'deposit_account' in qb_charge else None,
+                    payment_info=qb_charge.get('linked_transactions', [])
                 )
 
                 app.store.dispatch(update_statement_charge(updated_charge))

@@ -121,6 +121,63 @@ def reducer(state: AppState, action: Dict[str, Any]) -> AppState:
                 **{**state.__dict__, 'expected_deposit_account': payload}
             )
 
+        case 'ARCHIVE_CLOSED_TRANSACTIONS':
+            # Mark all closed/paid transactions as archived
+            archived_invoices = [
+                type(inv)(**{**inv.__dict__, 'archived': True})
+                if inv.status == 'closed' and not inv.archived else inv
+                for inv in state.invoices
+            ]
+            archived_receipts = [
+                type(sr)(**{**sr.__dict__, 'archived': True})
+                if sr.status == 'closed' and not sr.archived else sr
+                for sr in state.sales_receipts
+            ]
+            archived_charges = [
+                type(charge)(**{**charge.__dict__, 'archived': True})
+                if charge.status == 'closed' and not charge.archived else charge
+                for charge in state.statement_charges
+            ]
+            return AppState(
+                **{**state.__dict__,
+                   'invoices': archived_invoices,
+                   'sales_receipts': archived_receipts,
+                   'statement_charges': archived_charges}
+            )
+
+        case 'ARCHIVE_ALL_TRANSACTIONS':
+            # Mark ALL transactions as archived (regardless of status)
+            archived_invoices = [
+                type(inv)(**{**inv.__dict__, 'archived': True})
+                if not inv.archived else inv
+                for inv in state.invoices
+            ]
+            archived_receipts = [
+                type(sr)(**{**sr.__dict__, 'archived': True})
+                if not sr.archived else sr
+                for sr in state.sales_receipts
+            ]
+            archived_charges = [
+                type(charge)(**{**charge.__dict__, 'archived': True})
+                if not charge.archived else charge
+                for charge in state.statement_charges
+            ]
+            return AppState(
+                **{**state.__dict__,
+                   'invoices': archived_invoices,
+                   'sales_receipts': archived_receipts,
+                   'statement_charges': archived_charges}
+            )
+
+        case 'REMOVE_ALL_ARCHIVED':
+            # Remove archived transactions from session (deleted from JSON)
+            return AppState(
+                **{**state.__dict__,
+                   'invoices': [inv for inv in state.invoices if not inv.archived],
+                   'sales_receipts': [sr for sr in state.sales_receipts if not sr.archived],
+                   'statement_charges': [charge for charge in state.statement_charges if not charge.archived]}
+            )
+
         case _:
             # Default case - return unchanged state
             return state

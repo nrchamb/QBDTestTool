@@ -59,6 +59,8 @@ class QBXMLParser:
                 return QBXMLParser._parse_terms_query_response(root)
             elif response_type == 'ClassQueryRs':
                 return QBXMLParser._parse_class_query_response(root)
+            elif response_type == 'TxnDelRs':
+                return QBXMLParser._parse_txn_del_response(root)
             else:
                 return {'success': True, 'data': {'response_type': response_type}}
 
@@ -352,7 +354,7 @@ class QBXMLParser:
 
         charges_list = []
         for charge in charges:
-            charges_list.append({
+            charge_data = {
                 'txn_id': charge.findtext('TxnID'),
                 'ref_number': charge.findtext('RefNumber'),
                 'txn_date': charge.findtext('TxnDate'),
@@ -361,10 +363,34 @@ class QBXMLParser:
                     'full_name': charge.find('CustomerRef/FullName').text if charge.find('CustomerRef/FullName') is not None else None
                 },
                 'amount': float(charge.findtext('Amount')) if charge.findtext('Amount') else 0.0,
+                'balance_remaining': float(charge.findtext('BalanceRemaining', '0')),
+                'is_paid': charge.findtext('IsPaid') == 'true',
                 'quantity': charge.findtext('Quantity'),
                 'desc': charge.findtext('Desc'),
                 'edit_sequence': charge.findtext('EditSequence')
-            })
+            }
+
+            # Parse linked transactions (payments)
+            linked_txns = charge.xpath('LinkedTxn')
+            if linked_txns:
+                charge_data['linked_transactions'] = []
+                for linked in linked_txns:
+                    linked_data = {
+                        'txn_id': linked.findtext('TxnID'),
+                        'txn_type': linked.findtext('TxnType'),
+                        'txn_date': linked.findtext('TxnDate'),
+                        'ref_number': linked.findtext('RefNumber'),
+                        'amount': linked.findtext('Amount')
+                    }
+
+                    # Add payment method if available
+                    payment_method_ref = linked.find('PaymentMethodRef')
+                    if payment_method_ref is not None:
+                        linked_data['payment_method'] = payment_method_ref.findtext('FullName')
+
+                    charge_data['linked_transactions'].append(linked_data)
+
+            charges_list.append(charge_data)
 
         return {'success': True, 'data': {'charges': charges_list}}
 
@@ -407,3 +433,28 @@ class QBXMLParser:
             })
 
         return {'success': True, 'data': {'classes': classes}}
+
+    @staticmethod
+    def _parse_txn_del_response(root: etree.Element) -> Dict[str, Any]:
+        """
+        Parse TxnDelRs response.
+
+        TxnDelRs doesn't return much data - success is indicated by statusCode='0'.
+        The response contains TxnDelType and TxnID confirming what was deleted.
+        """
+        txn_del_rs = root.xpath('//TxnDelRs')
+
+        if not txn_del_rs:
+            return {'success': False, 'error': 'No TxnDelRs in response'}
+
+        txn_del_rs = txn_del_rs[0]
+
+        return {
+            'success': True,
+            'data': {
+                'deleted': True,
+                'txn_del_type': txn_del_rs.findtext('TxnDelType'),
+                'txn_id': txn_del_rs.findtext('TxnID'),
+                'message': 'Transaction deleted successfully'
+            }
+        }

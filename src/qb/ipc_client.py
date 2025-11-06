@@ -114,7 +114,7 @@ def start_manager():
     _response_queue = Queue()
 
     # Start connection manager process
-    from qb_connection_manager import run_connection_manager
+    from .connection_manager import run_connection_manager
 
     _manager_process = Process(
         target=run_connection_manager,

@@ -11,7 +11,7 @@ import pythoncom
 from multiprocessing import Queue
 from typing import Optional, Dict, Any
 from datetime import datetime
-from qb_connection import QBConnection
+from .connection import QBConnection
 
 
 class QBConnectionManager:

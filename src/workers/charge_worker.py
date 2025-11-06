@@ -6,10 +6,11 @@ Background worker for creating batch statement charges in QuickBooks.
 
 from datetime import datetime
 from tkinter import messagebox
-from qb_ipc_client import QBIPCClient, disconnect_qb
-from qbxml_builder import QBXMLBuilder
-from qbxml_parser import QBXMLParser
+from qb import QBIPCClient, disconnect_qb, QBXMLBuilder, QBXMLParser
 from mock_generation import ChargeGenerator
+from store.state import StatementChargeRecord
+from store.actions import add_statement_charge
+from workers.monitor_worker import update_invoice_tree
 from app_logging import LOG_NORMAL, LOG_VERBOSE, LOG_DEBUG
 
 
@@ -88,6 +89,21 @@ def create_charge_worker(app, customer: dict, num_charges: int,
 
                 if parser_result['success']:
                     charge_info = parser_result['data']
+
+                    # Create statement charge record
+                    # Note: ChargeAddRs doesn't return ref_number, use txn_id as placeholder
+                    # The real ref_number will be populated when monitoring queries the charge
+                    charge_record = StatementChargeRecord(
+                        txn_id=charge_info['txn_id'],
+                        ref_number=charge_info.get('ref_number', charge_info['txn_id']),
+                        customer_name=customer['name'],
+                        amount=float(charge_info.get('amount', amount)),
+                        status='open',
+                        created_at=datetime.now()
+                    )
+
+                    app.store.dispatch(add_statement_charge(charge_record))
+                    app.root.after(0, lambda: update_invoice_tree(app))
 
                     app.root.after(0, lambda n=charge_num, tid=charge_info['txn_id'], amt=charge_info.get('amount', amount):
                                   app._log_create(f"  ✓ [{n}/{num_charges}] Statement charge created: ${amt} (ID: {tid})", LOG_VERBOSE))

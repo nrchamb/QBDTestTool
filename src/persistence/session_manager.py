@@ -182,7 +182,8 @@ class SessionManager:
             'edit_sequence': getattr(invoice, 'edit_sequence', None),
             'time_modified': getattr(invoice, 'time_modified', None),
             'deposit_account': getattr(invoice, 'deposit_account', None),
-            'payment_info': getattr(invoice, 'payment_info', {})
+            'payment_info': getattr(invoice, 'payment_info', {}),
+            'archived': getattr(invoice, 'archived', False)
         }
 
     @staticmethod
@@ -200,7 +201,8 @@ class SessionManager:
             'edit_sequence': getattr(sr, 'edit_sequence', None),
             'time_modified': getattr(sr, 'time_modified', None),
             'deposit_account': getattr(sr, 'deposit_account', None),
-            'payment_info': getattr(sr, 'payment_info', {})
+            'payment_info': getattr(sr, 'payment_info', {}),
+            'archived': getattr(sr, 'archived', False)
         }
 
     @staticmethod
@@ -214,5 +216,6 @@ class SessionManager:
             'status': sc.status,
             'created_at': sc.created_at.isoformat() if sc.created_at else None,
             'edit_sequence': getattr(sc, 'edit_sequence', None),
-            'time_modified': getattr(sc, 'time_modified', None)
+            'time_modified': getattr(sc, 'time_modified', None),
+            'archived': getattr(sc, 'archived', False)
         }

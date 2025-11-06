@@ -216,3 +216,70 @@ def setup_setup_subtab(app):
         justify='left'
     )
     session_help_text.pack(anchor='w', pady=(10, 0))
+
+    # Separator
+    ttk.Separator(content, orient='horizontal').pack(fill='x', pady=15)
+
+    # Transaction Cleanup Section
+    archival_frame = ttk.LabelFrame(content, text="Transaction Cleanup", padding=10)
+    archival_frame.pack(fill='x', pady=(0, 10))
+
+    # Help text
+    archival_help_text = ttk.Label(
+        archival_frame,
+        text="Archive closed/paid transactions to clean up your session, or permanently delete them from QuickBooks.",
+        font=('TkDefaultFont', 8),
+        foreground='gray',
+        wraplength=600,
+        justify='left'
+    )
+    archival_help_text.pack(anchor='w', pady=(0, 10))
+
+    # Archival buttons
+    archival_button_frame = ttk.Frame(archival_frame)
+    archival_button_frame.pack(fill='x', pady=(0, 0))
+
+    app.archive_closed_btn = ttk.Button(
+        archival_button_frame,
+        text="Archive Closed Transactions",
+        command=app._archive_closed_transactions
+    )
+    app.archive_closed_btn.pack(side='left', padx=5)
+
+    app.archive_all_btn = ttk.Button(
+        archival_button_frame,
+        text="Archive All Transactions",
+        command=app._archive_all_transactions
+    )
+    app.archive_all_btn.pack(side='left', padx=5)
+
+    app.delete_archived_qb_btn = ttk.Button(
+        archival_button_frame,
+        text="Delete Archived from QuickBooks",
+        command=app._delete_archived_from_qb
+    )
+    app.delete_archived_qb_btn.pack(side='left', padx=5)
+
+    app.remove_archived_session_btn = ttk.Button(
+        archival_button_frame,
+        text="Remove Archived from Session",
+        command=app._remove_archived_from_session
+    )
+    app.remove_archived_session_btn.pack(side='left', padx=5)
+
+    # Archival status label
+    app.archival_status_label = ttk.Label(
+        archival_frame,
+        text="",
+        foreground='gray'
+    )
+    app.archival_status_label.pack(anchor='w', pady=(10, 0))
+
+    # Warning label
+    warning_label = ttk.Label(
+        archival_frame,
+        text="⚠ Warning: Deleting from QuickBooks is permanent and cannot be undone!",
+        font=('TkDefaultFont', 8, 'bold'),
+        foreground='red'
+    )
+    warning_label.pack(anchor='w', pady=(5, 0))

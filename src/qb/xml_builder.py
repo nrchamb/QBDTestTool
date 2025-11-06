@@ -637,3 +637,31 @@ class QBXMLBuilder:
         output = BytesIO()
         tree.write(output, xml_declaration=False, encoding='UTF-8', pretty_print=True)
         return output.getvalue().decode('utf-8')
+
+    @staticmethod
+    def build_txn_del(txn_del_type: str, txn_id: str) -> str:
+        """
+        Build TxnDelRq QBXML request to delete a transaction.
+
+        Args:
+            txn_del_type: Transaction type (Invoice, SalesReceipt, Charge)
+            txn_id: Transaction ID to delete
+
+        Returns:
+            QBXML formatted transaction delete request
+        """
+        tree, qbxml, msgs_rq = QBXMLBuilder._create_base_qbxml()
+        txn_del_rq = etree.SubElement(msgs_rq, "TxnDelRq")
+
+        # IMPORTANT: TxnDelType must come before TxnID per QBXML spec
+        txn_type = etree.SubElement(txn_del_rq, "TxnDelType")
+        txn_type.text = txn_del_type
+
+        txn_id_elem = etree.SubElement(txn_del_rq, "TxnID")
+        txn_id_elem.text = txn_id
+
+        # Serialize with processing instruction included
+        from io import BytesIO
+        output = BytesIO()
+        tree.write(output, xml_declaration=False, encoding='UTF-8', pretty_print=True)
+        return output.getvalue().decode('utf-8')

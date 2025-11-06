@@ -6,9 +6,7 @@ Compares session data with current QuickBooks state to detect changes.
 
 from typing import Dict, List, Any
 from datetime import datetime
-from qb_ipc_client import QBIPCClient
-from qbxml_builder import QBXMLBuilder
-from qbxml_parser import QBXMLParser
+from qb import QBIPCClient, QBXMLBuilder, QBXMLParser
 
 
 class ChangeDetector:

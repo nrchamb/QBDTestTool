@@ -6,9 +6,7 @@ Background worker for creating batch invoices in QuickBooks.
 
 from datetime import datetime
 from tkinter import messagebox
-from qb_ipc_client import QBIPCClient, disconnect_qb
-from qbxml_builder import QBXMLBuilder
-from qbxml_parser import QBXMLParser
+from qb import QBIPCClient, disconnect_qb, QBXMLBuilder, QBXMLParser
 from mock_generation import InvoiceGenerator
 from store.state import InvoiceRecord
 from store.actions import add_invoice
