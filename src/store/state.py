@@ -22,6 +22,9 @@ class InvoiceRecord:
     deposit_account: str = None
     payment_info: Dict[str, Any] = field(default_factory=dict)
     initial_memo: str = None  # Track memo at creation for validation
+    created_by_app: bool = True  # Flag to indicate app created this
+    edit_sequence: str = None  # QB version token for change detection
+    time_modified: str = None  # Last modified timestamp from QB
 
 
 @dataclass
@@ -37,6 +40,9 @@ class SalesReceiptRecord:
     deposit_account: str = None
     payment_info: Dict[str, Any] = field(default_factory=dict)
     initial_memo: str = None  # Track memo at creation for validation
+    created_by_app: bool = True  # Flag to indicate app created this
+    edit_sequence: str = None  # QB version token for change detection
+    time_modified: str = None  # Last modified timestamp from QB
 
 
 @dataclass
@@ -49,6 +55,9 @@ class StatementChargeRecord:
     status: str  # Always 'completed' for charges
     created_at: datetime
     last_checked: datetime = None
+    created_by_app: bool = True  # Flag to indicate app created this
+    edit_sequence: str = None  # QB version token for change detection
+    time_modified: str = None  # Last modified timestamp from QB
 
 
 @dataclass

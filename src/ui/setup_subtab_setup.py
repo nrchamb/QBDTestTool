@@ -4,6 +4,7 @@ Setup subtab setup for QuickBooks Desktop Test Tool.
 Handles the Setup subtab for loading customers, items, terms, classes, and accounts.
 """
 
+import tkinter as tk
 from tkinter import ttk
 from config import AppConfig
 from app_logging import LOG_LEVELS
@@ -134,3 +135,84 @@ def setup_setup_subtab(app):
         justify='left'
     )
     help_text.pack(anchor='w', pady=(10, 0))
+
+    # Separator
+    ttk.Separator(content, orient='horizontal').pack(fill='x', pady=15)
+
+    # Persistence Settings Section
+    persistence_frame = ttk.LabelFrame(content, text="Session Persistence", padding=10)
+    persistence_frame.pack(fill='x', pady=(0, 10))
+
+    # Get current persistence settings
+    persistence_settings = AppConfig.get_persistence_settings()
+
+    # Auto-load checkbox
+    app.auto_load_var = tk.BooleanVar(value=persistence_settings.get('auto_load', False))
+    auto_load_check = ttk.Checkbutton(
+        persistence_frame,
+        text="Auto-load previous session on startup",
+        variable=app.auto_load_var,
+        command=lambda: on_persistence_change(app)
+    )
+    auto_load_check.pack(anchor='w', pady=5)
+
+    # Verify on load checkbox
+    app.verify_on_load_var = tk.BooleanVar(value=persistence_settings.get('verify_on_load', True))
+    verify_check = ttk.Checkbutton(
+        persistence_frame,
+        text="Verify transactions on load (detect changes in QuickBooks)",
+        variable=app.verify_on_load_var,
+        command=lambda: on_persistence_change(app)
+    )
+    verify_check.pack(anchor='w', pady=5)
+
+    def on_persistence_change(app):
+        """Save persistence settings when changed."""
+        AppConfig.save_persistence_settings(
+            auto_load=app.auto_load_var.get(),
+            verify_on_load=app.verify_on_load_var.get()
+        )
+
+    # Session control buttons
+    button_frame = ttk.Frame(persistence_frame)
+    button_frame.pack(fill='x', pady=(10, 0))
+
+    app.save_session_btn = ttk.Button(
+        button_frame,
+        text="Save Session Now",
+        command=app._save_session_now
+    )
+    app.save_session_btn.pack(side='left', padx=5)
+
+    app.load_session_btn = ttk.Button(
+        button_frame,
+        text="Load Previous Session",
+        command=app._load_session_now
+    )
+    app.load_session_btn.pack(side='left', padx=5)
+
+    app.clear_session_btn = ttk.Button(
+        button_frame,
+        text="Clear Session",
+        command=app._clear_session
+    )
+    app.clear_session_btn.pack(side='left', padx=5)
+
+    # Session status label
+    app.session_status_label = ttk.Label(
+        persistence_frame,
+        text="No session loaded",
+        foreground='gray'
+    )
+    app.session_status_label.pack(anchor='w', pady=(10, 0))
+
+    # Help text
+    session_help_text = ttk.Label(
+        persistence_frame,
+        text="Sessions store created transactions for tracking. Enable auto-load to restore your work when restarting the app.",
+        font=('TkDefaultFont', 8),
+        foreground='gray',
+        wraplength=600,
+        justify='left'
+    )
+    session_help_text.pack(anchor='w', pady=(10, 0))

@@ -106,6 +106,11 @@ def reducer(state: AppState, action: Dict[str, Any]) -> AppState:
                 **{**state.__dict__, 'verification_results': state.verification_results + [payload]}
             )
 
+        case 'SET_VERIFICATION_RESULTS':
+            return AppState(
+                **{**state.__dict__, 'verification_results': [payload] if not isinstance(payload, list) else payload}
+            )
+
         case 'UPDATE_LAST_SYNC':
             return AppState(
                 **{**state.__dict__, 'last_sync': payload}

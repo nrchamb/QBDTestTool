@@ -79,6 +79,9 @@ class QBDTestToolApp:
         # Setup graceful shutdown handler
         self.root.protocol("WM_DELETE_WINDOW", lambda: on_closing(self))
 
+        # Auto-load previous session if enabled
+        self._check_and_load_session()
+
     def _setup_ui(self):
         """Setup the user interface."""
         # Create notebook (tabs)
@@ -195,6 +198,64 @@ class QBDTestToolApp:
     def _update_accounts_combo(self):
         """Update deposit account dropdown in Monitor tab (wrapper for monitor_actions.update_accounts_combo)."""
         update_accounts_combo(self)
+
+    def _save_session_now(self):
+        """Save current session (wrapper - launches background thread)."""
+        from workers.session_worker import save_session_worker
+        thread = threading.Thread(target=save_session_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _load_session_now(self):
+        """Load previous session (wrapper - launches background thread)."""
+        from workers.session_worker import load_session_worker
+        thread = threading.Thread(target=load_session_worker, args=(self, False), daemon=True)
+        thread.start()
+
+    def _clear_session(self):
+        """Clear session data (wrapper - launches background thread)."""
+        from workers.session_worker import clear_session_worker
+        thread = threading.Thread(target=clear_session_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _auto_save_session(self):
+        """Silently auto-save session in background (no user interruption)."""
+        from workers.session_worker import save_session_worker
+        thread = threading.Thread(target=save_session_worker, args=(self, True), daemon=True)
+        thread.start()
+
+    def _check_and_load_session(self):
+        """Check settings and auto-load session if enabled."""
+        from persistence import SessionManager
+
+        # Check if session file exists
+        if not SessionManager.session_exists():
+            self._log_create("No previous session found")
+            return
+
+        # Get session info
+        info = SessionManager.get_session_info()
+        if not info:
+            return
+
+        # Check if auto-load is enabled
+        persistence_settings = AppConfig.get_persistence_settings()
+        auto_load = persistence_settings.get('auto_load', False)
+
+        if auto_load:
+            # Auto-load session
+            self._log_create(f"Auto-loading previous session ({info['total_items']} items)...")
+            verify_on_load = persistence_settings.get('verify_on_load', False)
+
+            from workers.session_worker import load_session_worker
+            thread = threading.Thread(target=load_session_worker, args=(self, verify_on_load), daemon=True)
+            thread.start()
+        else:
+            # Just show session info
+            self._log_create(f"Previous session available ({info['total_items']} items) - Click 'Load Previous Session' to restore")
+            if hasattr(self, 'session_status_label'):
+                self.session_status_label.config(
+                    text=f"Session available ({info['total_items']} items) - Not auto-loaded"
+                )
 
     def _on_state_change(self):
         """Called when store state changes."""

@@ -159,6 +159,8 @@ def create_customer_worker(app, email: str, field_config: dict, manual_values: d
     finally:
         # Disconnect from QuickBooks after batch operation completes
         disconnect_qb()
+        # Auto-save session after creating customers
+        app.root.after(0, lambda: app._auto_save_session())
         # Re-enable button and update status
         app.root.after(0, lambda: app.create_customer_btn.config(state='normal'))
         app.root.after(0, lambda: app.status_bar.config(text="Ready"))

@@ -159,6 +159,8 @@ def create_sales_receipt_worker(app, customer: dict, num_receipts: int,
     finally:
         # Disconnect from QuickBooks after batch operation completes
         disconnect_qb()
+        # Auto-save session after creating sales receipts
+        app.root.after(0, lambda: app._auto_save_session())
         # Re-enable button and update status
         app.root.after(0, lambda: app.create_transaction_btn.config(state='normal'))
         app.root.after(0, lambda: app.status_bar.config(text="Ready"))
