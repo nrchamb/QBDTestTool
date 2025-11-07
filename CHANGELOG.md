@@ -6,30 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [v1.2.0] - 2025-11-07
 
-### Added
-
-#### Application Management
-- **Single instance enforcement**: Added PID awareness to prevent multiple instances from running
-  - New module: `trayapp/single_instance.py`
-  - Prevents conflicting QuickBooks connections and state corruption
-  - Shows warning message when attempting to launch duplicate instance
-
-#### UI Enhancements
-- **Resizable activity logs**: Activity logs now use resizable PanedWindow with drag handles
-  - Changed from `ttk.PanedWindow` to `tk.PanedWindow` for better resize handle visibility
-  - Users can adjust log size to preference during runtime
-- **Collapsible activity logs**: Added collapse/expand functionality for both Create and Monitor logs
-  - Toggle buttons with visual indicators (▶ Show Log / ▼ Hide Log)
-  - Maximizes workspace when logs aren't needed
-- **Persistent UI state**: Activity log collapse state and sash positions now persist across sessions
-  - Automatically restores user's preferred layout on startup
-  - Stored in application config
-
-#### Settings Organization
-- **Dedicated Settings tab**: Moved settings and persistence configuration to dedicated UI
-  - New module: `ui/settings_tab_setup.py`
-  - Cleaner separation of concerns
-
 ### Fixed
 
 #### Connection Management
@@ -41,21 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Previously relied on 30-second idle timeout
   - Now explicitly calls `disconnect_qb()` for immediate cleanup
   - Follows same pattern as `load_all_worker()` for consistency
-- **Connection check before actions**: Added connection availability check before loading persisted transactions
-  - Prevents connection failure spam when QuickBooks isn't running
-  - Provides user-friendly error messages
-  - New module: `qb/connection_check.py`
 
 ### Changed
-
-#### UI Architecture
-- **Unified UI constants**: Consolidated all UI variables into `ui_constants.py`
-  - Spacing values (XS, SM, MD, LG, XL)
-  - Widget dimensions (entry widths, combobox widths, spinbox widths)
-  - Font definitions (body, bold, header)
-  - Column widths for treeviews
-  - Ensures consistency across all tabs with single source of truth
-  - Changes propagate automatically to all UI components
 
 #### UI Theme
 - **Removed ttkthemes dependency**: Reverted to standard tkinter theming for better compatibility
@@ -64,53 +27,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Removed custom dark color constants and styling from ScrolledText and Treeview widgets
   - Application now uses standard system theme
 
-#### Code Organization
-- **Consolidated transaction actions**: Merged separate action files into unified module
-  - Combined `sales_receipt_actions.py`, `invoice_actions.py`, and `charge_actions.py` into `transactions_actions.py`
-  - Removed code duplication
-  - Cleaner module structure
-- **Extracted UI utility functions**: Moved utility functions from UI files to dedicated actions module
-  - New module: `actions/ui_utility_actions.py`
-  - UI setup files now contain only pure UI configuration
-  - Better separation of concerns between UI structure and UI behavior
-
-#### Performance Improvements
-- **O(1) lookup for Terms and Classes**: Switched from O(N) list search to O(1) dictionary lookup
-  - Build `terms_listid_map` and `classes_listid_map` on data load
-  - Direct key-based lookup when creating transactions
-  - Significant performance improvement for large QuickBooks files
-  - Better memory efficiency with persistent mapping
-
 ### Technical Details
 
 #### Connection Fix
-- `qb/connection_check.py:24-52`: Completely rewrote QuickBooks availability check
+- `connection_check.py:24-52`: Completely rewrote QuickBooks availability check
   - Now properly imports `QBIPCClient`, `QBXMLBuilder`, and `QBXMLParser`
   - Correctly calls `QBIPCClient.execute_request(request_xml)`
   - Parses XML response and returns proper tuple of `(bool, str)`
-- `workers/session_worker.py:328-331`: Added connection cleanup in verification worker
-
-#### UI Constants
-- `ui/ui_constants.py`: Central repository for all UI configuration
-  - **Spacing**: `SPACING_XS` through `SPACING_XL` (2-20px)
-  - **Fonts**: `FONT_BODY`, `FONT_BOLD`, `FONT_HEADER`
-  - **Widget widths**: Entry, Combobox, Spinbox dimensions
-  - **Treeview dimensions**: Height constants for different contexts
-  - **Column widths**: SM, MD, LG, XL, XXL for consistent table layouts
-  - **Pack/Grid patterns**: Reusable layout configurations
-
-#### Activity Log Implementation
-- Uses `tk.PanedWindow` with `sashrelief='raised'` and `sashwidth=8` for visible resize handle
-- Collapse state stored in `AppConfig.ui_state['activity_log_collapsed']`
-- Sash positions stored in `AppConfig.ui_state['create_log_sash_pos']` and `monitor_log_sash_pos`
-- Default 70/30 split between content and log when no saved position exists
-- Delayed sash positioning (`after(200)`) ensures window has rendered before placement
-
-#### Files Created
-- `trayapp/single_instance.py`: PID-based single instance enforcement
-- `ui/settings_tab_setup.py`: Settings and persistence UI
-- `qb/connection_check.py`: QuickBooks availability checking
-- `actions/ui_utility_actions.py`: UI behavior functions
+- `session_worker.py:328-331`: Added connection cleanup in verification worker
 
 #### Files Modified
 - `requirements.txt`: Removed ttkthemes dependency
@@ -118,22 +42,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `src/app.py`: Removed ThemedTk import and usage
 - `src/qb/connection_check.py`: Fixed connection availability check
 - `src/workers/session_worker.py`: Added connection cleanup after verification
-- `src/workers/data_loader_worker.py`: Added O(1) Terms/Class mappings
-- `src/actions/transaction_actions.py`: Consolidated from separate files, uses O(1) lookups
-- `src/ui/ui_constants.py`: Removed dark theme colors, consolidated all UI constants
-- `src/ui/create_tab_setup.py`: PanedWindow, collapsible log, persistence
-- `src/ui/monitor_tab_setup.py`: PanedWindow, collapsible log, persistence
-- `src/ui/verify_tab_setup.py`: Removed dark theme styling
+- `src/ui/ui_constants.py`: Removed dark theme color constants
+- `src/ui/create_tab_setup.py`: Removed dark theme styling from activity log
+- `src/ui/monitor_tab_setup.py`: Removed dark theme styling from monitor log
+- `src/ui/verify_tab_setup.py`: Removed dark theme styling from verification treeview
 
-#### Files Deleted
-- `src/actions/sales_receipt_actions.py`: Merged into `transaction_actions.py`
-- `src/actions/invoice_actions.py`: Merged into `transaction_actions.py`
-- `src/actions/charge_actions.py`: Merged into `transaction_actions.py`
-
-#### Performance Metrics
-- **Terms/Class lookup**: O(N) → O(1) complexity reduction
-- **UI consistency**: 100% of UI constants now centralized
-- **Code reuse**: 3 action files consolidated into 1
+---
 
 ## [v1.1.0] - 2025-11-05
 
