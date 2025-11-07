@@ -6,6 +6,7 @@ Handles graceful and forced shutdown of the connection manager daemon.
 
 from config import AppConfig
 from qb import stop_manager
+from . import single_instance
 
 
 def on_closing(app):
@@ -30,6 +31,9 @@ def on_closing(app):
     print("Stopping connection manager...")
     stop_manager()
 
+    # Release single instance lock
+    single_instance.release_lock()
+
     # Stop tray icon
     if hasattr(app, 'tray_icon'):
         app.tray_icon.stop()
@@ -45,6 +49,35 @@ def on_closing(app):
             print(f"Saved window geometry: {width}x{height}+{x}+{y}")
     except Exception as e:
         print(f"Error saving window geometry: {e}")
+
+    # Save UI state (activity log collapsed state and sash positions)
+    try:
+        if hasattr(app, 'create_log_collapsed'):
+            activity_log_collapsed = app.create_log_collapsed.get()
+
+            # Get sash positions (only if logs are expanded)
+            create_sash_pos = None
+            monitor_sash_pos = None
+
+            if not activity_log_collapsed:
+                if hasattr(app, 'create_paned'):
+                    try:
+                        create_sash_pos = app.create_paned.sash_coord(0)[1]
+                        print(f"Saving create log sash position: {create_sash_pos}")
+                    except Exception as e:
+                        print(f"Could not get create sash position: {e}")
+
+                if hasattr(app, 'monitor_paned'):
+                    try:
+                        monitor_sash_pos = app.monitor_paned.sash_coord(0)[1]
+                        print(f"Saving monitor log sash position: {monitor_sash_pos}")
+                    except Exception as e:
+                        print(f"Could not get monitor sash position: {e}")
+
+            AppConfig.save_ui_state(activity_log_collapsed, create_sash_pos, monitor_sash_pos)
+            print(f"Saved UI state: activity_log_collapsed={activity_log_collapsed}")
+    except Exception as e:
+        print(f"Error saving UI state: {e}")
 
     # Destroy window
     app.root.destroy()
@@ -75,6 +108,9 @@ def force_close(app):
         if _manager_process.is_alive():
             print("Manager still alive, killing forcefully...")
             _manager_process.kill()
+
+    # Release single instance lock
+    single_instance.release_lock()
 
     # Stop tray icon
     if hasattr(app, 'tray_icon'):

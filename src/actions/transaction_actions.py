@@ -102,25 +102,17 @@ def _create_invoices(app, customer, num_invoices, amount_min, amount_max, date_r
         if not po_prefix:
             po_prefix = None  # Don't use empty string
 
-        # Get selected terms and look up list_id
+        # Get selected terms and look up list_id (O(1) lookup via mapping)
         terms_ref = None
         selected_terms = app.txn_terms_combo.get()
         if selected_terms and selected_terms != '(None)':
-            # Find the terms in state by name
-            for term in state.terms:
-                if term['name'] == selected_terms:
-                    terms_ref = term['list_id']
-                    break
+            terms_ref = app.terms_listid_map.get(selected_terms)
 
-        # Get selected class and look up list_id
+        # Get selected class and look up list_id (O(1) lookup via mapping)
         class_ref = None
         selected_class = app.txn_class_combo.get()
         if selected_class and selected_class != '(None)':
-            # Find the class in state by full_name
-            for cls in state.classes:
-                if cls['full_name'] == selected_class:
-                    class_ref = cls['list_id']
-                    break
+            class_ref = app.classes_listid_map.get(selected_class)
 
         # Disable button and update status
         app.create_transaction_btn.config(state='disabled')

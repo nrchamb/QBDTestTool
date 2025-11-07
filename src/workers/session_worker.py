@@ -242,3 +242,90 @@ def update_session_status(app, message: str):
     """
     if hasattr(app, 'session_status_label'):
         app.session_status_label.config(text=message)
+
+
+def verify_session_worker(app):
+    """
+    Background worker to verify session transactions against QuickBooks.
+
+    This function only performs verification - it does not load session data.
+    Session must already be loaded before calling this function.
+
+    Args:
+        app: Reference to the main QBDTestToolApp instance
+    """
+    try:
+        app.root.after(0, lambda: app._log_create("Verifying session transactions against QuickBooks..."))
+
+        # Get current state from store
+        state = app.store.get_state()
+
+        # Count total transactions
+        total_transactions = len(state.invoices) + len(state.sales_receipts) + len(state.statement_charges)
+
+        if total_transactions == 0:
+            app.root.after(0, lambda: app._log_create("No transactions to verify"))
+            return
+
+        # Verify all transactions
+        from persistence import ChangeDetector
+        verification_results = ChangeDetector.verify_all_transactions(state)
+
+        # Check for connection error
+        if 'error' in verification_results:
+            error_msg = verification_results.get('message', 'Unknown error')
+            app.root.after(0, lambda: app._log_create(f"✗ Verification failed: {error_msg}"))
+            app.root.after(0, lambda: messagebox.showerror("Verification Failed", error_msg))
+            return
+
+        # Store results in state for Verification Results tab
+        app.store.dispatch({
+            'type': 'SET_VERIFICATION_RESULTS',
+            'payload': verification_results
+        })
+
+        # Log summary
+        summary = verification_results['summary']
+        total_changed = summary['total_changed']
+        total_deleted = summary['total_deleted']
+        total_unchanged = summary['total_verified'] - total_changed - total_deleted
+
+        app.root.after(0, lambda: app._log_create(
+            f"✓ Verification complete: {total_unchanged} unchanged, "
+            f"{total_changed} modified, {total_deleted} deleted"
+        ))
+
+        # Log individual changes if any
+        if total_changed > 0 or total_deleted > 0:
+            all_changes = (
+                verification_results['invoices'] +
+                verification_results['sales_receipts'] +
+                verification_results['statement_charges']
+            )
+
+            for change in all_changes:
+                if change['change_type'] in ['modified', 'deleted']:
+                    txn_type = change['type'].replace('_', ' ').title()
+                    ref_num = change.get('ref_number', 'Unknown')
+                    change_type = change['change_type'].title()
+
+                    changes_list = []
+                    if 'changes' in change:
+                        for key, value in change['changes'].items():
+                            changes_list.append(f"{key}: {value['old']} → {value['new']}")
+
+                    change_details = '; '.join(changes_list) if changes_list else ''
+                    msg = f"  • {txn_type} #{ref_num}: {change_type}"
+                    if change_details:
+                        msg += f" ({change_details})"
+
+                    app.root.after(0, lambda m=msg: app._log_create(m))
+
+    except Exception as e:
+        error_str = str(e)
+        app.root.after(0, lambda: app._log_create(f"✗ Error during verification: {error_str}"))
+        app.root.after(0, lambda: messagebox.showerror("Verification Error", error_str))
+    finally:
+        # Disconnect from QuickBooks after verification completes
+        from qb import disconnect_qb
+        disconnect_qb()

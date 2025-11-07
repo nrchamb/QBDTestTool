@@ -14,7 +14,7 @@ from .data_loader_worker import (
 )
 from .customer_worker import create_customer_worker
 from .invoice_worker import create_invoice_worker
-from .sales_receipt_worker import create_sales_receipt_worker, query_sales_receipt_worker
+from .sales_receipt_worker import create_sales_receipt_worker
 from .charge_worker import create_charge_worker
 
 __all__ = [
@@ -27,6 +27,5 @@ __all__ = [
     'create_customer_worker',
     'create_invoice_worker',
     'create_sales_receipt_worker',
-    'query_sales_receipt_worker',
     'create_charge_worker',
 ]

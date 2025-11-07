@@ -80,6 +80,10 @@ def load_terms_worker(app):
             # Update invoice terms dropdown
             term_names = ['(None)'] + [term['name'] for term in terms]
             app.root.after(0, lambda: app.invoice_terms_combo.config(values=term_names))
+
+            # Build terms ListID mapping for O(1) lookup
+            terms_map = {term['name']: term['list_id'] for term in terms}
+            app.root.after(0, lambda tm=terms_map: setattr(app, 'terms_listid_map', tm))
         else:
             error_msg = result['error']
             app.root.after(0, lambda: app._log_create(f"✗ Error loading terms: {error_msg}"))
@@ -118,6 +122,10 @@ def load_classes_worker(app):
             # Update invoice class dropdown
             class_names = ['(None)'] + [cls['full_name'] for cls in classes]
             app.root.after(0, lambda: app.invoice_class_combo.config(values=class_names))
+
+            # Build classes ListID mapping for O(1) lookup
+            classes_map = {cls['full_name']: cls['list_id'] for cls in classes}
+            app.root.after(0, lambda cm=classes_map: setattr(app, 'classes_listid_map', cm))
         else:
             error_msg = result['error']
             app.root.after(0, lambda: app._log_create(f"✗ Error loading classes: {error_msg}"))
@@ -242,6 +250,9 @@ def load_all_worker(app):
             ))
             term_names = ['(None)'] + [term['name'] for term in terms]
             app.root.after(0, lambda tn=term_names: app.txn_terms_combo.config(values=tn))
+            # Build terms ListID mapping for O(1) lookup
+            terms_map = {term['name']: term['list_id'] for term in terms}
+            app.root.after(0, lambda tm=terms_map: setattr(app, 'terms_listid_map', tm))
         else:
             raise Exception(f"Failed to load terms: {result['error']}")
 
@@ -258,6 +269,9 @@ def load_all_worker(app):
             ))
             class_names = ['(None)'] + [cls['full_name'] for cls in classes]
             app.root.after(0, lambda cn=class_names: app.txn_class_combo.config(values=cn))
+            # Build classes ListID mapping for O(1) lookup
+            classes_map = {cls['full_name']: cls['list_id'] for cls in classes}
+            app.root.after(0, lambda cm=classes_map: setattr(app, 'classes_listid_map', cm))
         else:
             raise Exception(f"Failed to load classes: {result['error']}")
 

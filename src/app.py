@@ -23,15 +23,17 @@ from trayapp import TrayIconManager, on_closing, force_close
 from ui.create_tab_setup import setup_create_tab
 from ui.monitor_tab_setup import setup_monitor_tab
 from ui.verify_tab_setup import setup_verify_tab
+from ui.settings_tab_setup import setup_settings_tab
 from ui.setup_subtab_setup import setup_setup_subtab
 from app_logging import log_create, log_monitor
 from ui.ui_utils import create_scrollable_frame
+from ui.ui_constants import SPACING_SM
 from actions.customer_actions import create_customer, update_customer_combo
 from actions.monitor_actions import update_accounts_combo
 from workers import (
     load_items_worker, load_terms_worker, load_classes_worker, load_accounts_worker,
     load_customers_worker, load_all_worker, create_customer_worker, create_invoice_worker,
-    create_sales_receipt_worker, query_sales_receipt_worker, create_charge_worker
+    create_sales_receipt_worker, create_charge_worker
 )
 
 
@@ -55,6 +57,10 @@ class QBDTestToolApp:
 
         # Customer ListID mapping (to avoid index mismatch with nested jobs)
         self.customer_listid_map = {}  # Maps display_name -> list_id
+
+        # Terms and Classes ListID mappings (for O(1) lookup during transaction creation)
+        self.terms_listid_map = {}  # Maps term name -> list_id
+        self.classes_listid_map = {}  # Maps class full_name -> list_id
 
         # Monitoring thread
         self.monitor_thread: Optional[threading.Thread] = None
@@ -83,7 +89,7 @@ class QBDTestToolApp:
         """Setup the user interface."""
         # Create notebook (tabs)
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill='both', expand=True, padx=5, pady=5)
+        self.notebook.pack(fill='both', expand=True, padx=SPACING_SM, pady=SPACING_SM)
 
         # Tab 1: Create Data
         self.create_tab = ttk.Frame(self.notebook)
@@ -99,6 +105,11 @@ class QBDTestToolApp:
         self.verify_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.verify_tab, text='Verification Results')
         setup_verify_tab(self)
+
+        # Tab 4: Settings
+        self.settings_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.settings_tab, text='Settings')
+        setup_settings_tab(self)
 
         # Status bar
         self.status_bar = tk.Label(self.root, text="Ready", bd=1, relief=tk.SUNKEN, anchor=tk.W)
@@ -214,6 +225,32 @@ class QBDTestToolApp:
         thread = threading.Thread(target=clear_session_worker, args=(self,), daemon=True)
         thread.start()
 
+    def _verify_session_transactions(self):
+        """Verify all session transactions against QuickBooks."""
+        from qb.connection_check import is_quickbooks_available
+
+        # Check if session is loaded
+        state = self.store.get_state()
+        total_txns = len(state.invoices) + len(state.sales_receipts) + len(state.statement_charges)
+        if total_txns == 0:
+            messagebox.showwarning("No Session", "No session transactions to verify.\n\nPlease load a session first.")
+            return
+
+        # Check QB connection
+        is_available, error_msg = is_quickbooks_available()
+        if not is_available:
+            messagebox.showerror(
+                "QuickBooks Not Available",
+                f"{error_msg}\n\nPlease:\n1. Start QuickBooks Desktop\n2. Open a company file\n3. Try again"
+            )
+            return
+
+        # Launch verification worker
+        self._log_create(f"Starting verification of {total_txns} transaction(s)...")
+        from workers.session_worker import verify_session_worker
+        thread = threading.Thread(target=verify_session_worker, args=(self,), daemon=True)
+        thread.start()
+
     def _auto_save_session(self):
         """Silently auto-save session in background (no user interruption)."""
         from workers.session_worker import save_session_worker
@@ -263,13 +300,15 @@ class QBDTestToolApp:
         auto_load = persistence_settings.get('auto_load', False)
 
         if auto_load:
-            # Auto-load session
+            # Auto-load session (without verification)
             self._log_create(f"Auto-loading previous session ({info['total_items']} items)...")
-            verify_on_load = persistence_settings.get('verify_on_load', False)
 
             from workers.session_worker import load_session_worker
-            thread = threading.Thread(target=load_session_worker, args=(self, verify_on_load), daemon=True)
+            thread = threading.Thread(target=load_session_worker, args=(self, False), daemon=True)
             thread.start()
+
+            # Prompt user to manually verify if desired
+            self._log_create("Session loaded. Click 'Verify Session Transactions' in Settings to check for changes.")
         else:
             # Just show session info
             self._log_create(f"Previous session available ({info['total_items']} items) - Click 'Load Previous Session' to restore")
@@ -297,6 +336,11 @@ class QBDTestToolApp:
 
 def main():
     """Main entry point."""
+    # Check for existing instance
+    from trayapp import check_and_acquire_lock
+    if not check_and_acquire_lock():
+        return  # Exit if another instance is running
+
     root = tk.Tk()
     app = QBDTestToolApp(root)
     root.mainloop()

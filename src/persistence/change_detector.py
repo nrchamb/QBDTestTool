@@ -7,6 +7,7 @@ Compares session data with current QuickBooks state to detect changes.
 from typing import Dict, List, Any
 from datetime import datetime
 from qb import QBIPCClient, QBXMLBuilder, QBXMLParser
+from qb.connection import QBConnectionError
 
 
 class ChangeDetector:
@@ -344,21 +345,40 @@ class ChangeDetector:
             }
         }
 
-        # Verify each transaction type
-        if state.invoices:
-            invoice_changes = ChangeDetector.verify_invoices(state.invoices)
-            results['invoices'] = invoice_changes
-            results['summary']['total_verified'] += len(state.invoices)
+        # Check QB connection BEFORE attempting verification
+        from qb.connection_check import is_quickbooks_available
+        is_available, error_msg = is_quickbooks_available()
 
-        if state.sales_receipts:
-            receipt_changes = ChangeDetector.verify_sales_receipts(state.sales_receipts)
-            results['sales_receipts'] = receipt_changes
-            results['summary']['total_verified'] += len(state.sales_receipts)
+        if not is_available:
+            # QB not available - return error immediately without iterating
+            results['error'] = 'Connection check failed'
+            results['message'] = error_msg
+            results['summary']['total_errors'] = 1
+            return results
 
-        if state.statement_charges:
-            charge_changes = ChangeDetector.verify_statement_charges(state.statement_charges)
-            results['statement_charges'] = charge_changes
-            results['summary']['total_verified'] += len(state.statement_charges)
+        # Verify each transaction type with early exit on connection errors
+        try:
+            if state.invoices:
+                invoice_changes = ChangeDetector.verify_invoices(state.invoices)
+                results['invoices'] = invoice_changes
+                results['summary']['total_verified'] += len(state.invoices)
+
+            if state.sales_receipts:
+                receipt_changes = ChangeDetector.verify_sales_receipts(state.sales_receipts)
+                results['sales_receipts'] = receipt_changes
+                results['summary']['total_verified'] += len(state.sales_receipts)
+
+            if state.statement_charges:
+                charge_changes = ChangeDetector.verify_statement_charges(state.statement_charges)
+                results['statement_charges'] = charge_changes
+                results['summary']['total_verified'] += len(state.statement_charges)
+
+        except QBConnectionError as e:
+            # Connection lost during verification - stop immediately
+            results['error'] = 'Lost connection during verification'
+            results['message'] = str(e)
+            results['summary']['total_errors'] += 1
+            return results
 
         # Calculate summary statistics
         all_changes = results['invoices'] + results['sales_receipts'] + results['statement_charges']

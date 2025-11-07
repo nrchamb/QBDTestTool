@@ -54,21 +54,19 @@ def stop_monitoring(app):
     app._log_monitor("Monitoring stopped.")
 
 
-def set_expected_deposit_account(app):
+def handle_set_deposit_account(app):
     """
     Set the expected deposit account for validation.
 
     Args:
         app: Reference to the main QBDTestToolApp instance
     """
-    from store import set_expected_deposit_account as set_account_action
-
     account_name = app.expected_deposit_account_combo.get().strip()
     if account_name:
-        app.store.dispatch(set_account_action(account_name))
+        app.store.dispatch(set_expected_deposit_account(account_name))
         messagebox.showinfo("Success", f"Expected deposit account set to: {account_name}")
     else:
-        app.store.dispatch(set_account_action(None))
+        app.store.dispatch(set_expected_deposit_account(None))
         messagebox.showinfo("Info", "Expected deposit account cleared")
 
 
