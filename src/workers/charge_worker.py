@@ -12,6 +12,8 @@ from store.state import StatementChargeRecord
 from store.actions import add_statement_charge
 from workers.monitor_worker import update_invoice_tree
 from app_logging import LOG_NORMAL, LOG_VERBOSE, LOG_DEBUG
+from app_logging.logging_config import should_log
+from config import AppConfig
 
 
 def create_charge_worker(app, customer: dict, num_charges: int,
@@ -73,16 +75,18 @@ def create_charge_worker(app, customer: dict, num_charges: int,
                 # Build QBXML request
                 request = QBXMLBuilder.build_charge_add(charge_data)
 
-                # DEBUG: Log the XML request
-                app.root.after(0, lambda n=charge_num, xml=request:
-                              app._log_create(f"  [DEBUG {n}] QBXML Request:\n{xml}", LOG_DEBUG))
+                # DEBUG: Log the XML request (only if DEBUG is enabled)
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    app.root.after(0, lambda n=charge_num, xml=request:
+                                  app._log_create(f"  [DEBUG {n}] QBXML Request:\n{xml}", LOG_DEBUG))
 
                 # Send to QuickBooks
                 response_xml = qb.execute_request(request)
 
-                # DEBUG: Log the XML response
-                app.root.after(0, lambda n=charge_num, xml=response_xml:
-                              app._log_create(f"  [DEBUG {n}] QBXML Response:\n{xml}", LOG_DEBUG))
+                # DEBUG: Log the XML response (only if DEBUG is enabled)
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    app.root.after(0, lambda n=charge_num, xml=response_xml:
+                                  app._log_create(f"  [DEBUG {n}] QBXML Response:\n{xml}", LOG_DEBUG))
 
                 # Parse response
                 parser_result = QBXMLParser.parse_response(response_xml)

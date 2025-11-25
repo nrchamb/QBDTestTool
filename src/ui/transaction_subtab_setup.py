@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import ttk
 from actions.transaction_actions import create_transaction
 from actions.ui_utility_actions import update_transaction_form_visibility
-from .ui_utils import create_scrollable_frame
+from .ui_utils import create_scrollable_frame, SearchableCombobox
 from .ui_constants import (
     SPACING_SM, SPACING_MD, SPACING_LG, SPACING_XL,
     FONT_HEADING, ENTRY_WIDTH_SHORT, ENTRY_WIDTH_LONG,
@@ -76,9 +76,9 @@ def setup_transaction_subtab(app):
 
     row = 0
 
-    # Customer selector
+    # Customer selector (searchable)
     ttk.Label(form_frame, text="Select Customer:").grid(row=row, column=0, sticky='w', pady=SPACING_SM, padx=SPACING_SM)
-    app.txn_customer_combo = ttk.Combobox(form_frame, width=ENTRY_WIDTH_LONG, state='readonly')
+    app.txn_customer_combo = SearchableCombobox(form_frame, width=ENTRY_WIDTH_LONG)
     app.txn_customer_combo.grid(row=row, column=1, pady=SPACING_SM, padx=SPACING_SM, sticky='w')
     app.customer_combos.append(app.txn_customer_combo)
     row += 1

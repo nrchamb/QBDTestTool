@@ -95,10 +95,14 @@ class QBXMLParser:
 
         customer_list = []
         for customer in customers:
+            # Get sublevel (0 = parent, 1+ = job/sub-customer)
+            sublevel = int(customer.findtext('Sublevel', '0'))
+
             customer_list.append({
                 'list_id': customer.findtext('ListID'),
                 'name': customer.findtext('Name'),
                 'full_name': customer.findtext('FullName'),
+                'sublevel': sublevel,
                 'email': customer.findtext('Email') or '',
                 'is_active': customer.findtext('IsActive') == 'true',
                 'balance': float(customer.findtext('Balance', '0'))

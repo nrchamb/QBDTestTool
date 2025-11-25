@@ -36,6 +36,15 @@ def _parse_qb_error(error) -> str:
             "2. Open a company file\n"
             "3. Try again"
         )
+    elif '-2147220464' in error_str or '0x80040410' in error_str:
+        return (
+            "QuickBooks file mode mismatch.\n\n"
+            "Please:\n"
+            "1. Make sure QuickBooks Desktop is running\n"
+            "2. Ensure a company file is open\n"
+            "3. Try closing and reopening QuickBooks\n"
+            "4. If the issue persists, check if another application is connected to QuickBooks"
+        )
     elif '-2147220445' in error_str or '0x80040423' in error_str:
         return (
             "QuickBooks Desktop is not set to allow access.\n\n"
@@ -111,10 +120,11 @@ class QBConnection:
             logger.info(f"Connection opened to QuickBooks: {self.app_name}")
 
             # Begin session
+            # Use qbFileOpenDoNotCare (2) for better compatibility with both single-user and multi-user modes
             if company_file:
                 self.ticket = self.session_manager.BeginSession(company_file, 2)  # 2 = qbFileOpenDoNotCare
             else:
-                self.ticket = self.session_manager.BeginSession("", 1)  # 1 = qbFileOpenSingleUser
+                self.ticket = self.session_manager.BeginSession("", 2)  # 2 = qbFileOpenDoNotCare
 
             logger.info("Session started with QuickBooks")
             return True

@@ -131,6 +131,45 @@ def setup_settings_tab(app):
     # Separator
     ttk.Separator(content, orient='horizontal').pack(fill='x', pady=SPACING_LG)
 
+    # File Locations Section
+    locations_frame = ttk.LabelFrame(content, text="Application Data", padding=SPACING_MD)
+    locations_frame.pack(fill='x', pady=(0, SPACING_MD))
+
+    # Help text
+    locations_help_text = ttk.Label(
+        locations_frame,
+        text="Open the folder containing configuration and session data files.",
+        font=FONT_CAPTION,
+        foreground='gray',
+        wraplength=TEXT_WRAPLENGTH,
+        justify='left'
+    )
+    locations_help_text.pack(anchor='w', pady=(0, SPACING_MD))
+
+    # Location buttons
+    location_button_frame = ttk.Frame(locations_frame)
+    location_button_frame.pack(fill='x', pady=(0, 0))
+
+    ttk.Button(
+        location_button_frame,
+        text="Open Data Folder",
+        command=app._open_data_folder
+    ).pack(side='left', padx=SPACING_SM)
+
+    # Show current path
+    from pathlib import Path
+    data_path = Path.home() / ".qbd_test_tool"
+    path_label = ttk.Label(
+        locations_frame,
+        text=f"Location: {data_path}",
+        font=FONT_CAPTION,
+        foreground='gray'
+    )
+    path_label.pack(anchor='w', pady=(SPACING_MD, 0))
+
+    # Separator
+    ttk.Separator(content, orient='horizontal').pack(fill='x', pady=SPACING_LG)
+
     # Transaction Cleanup Section
     archival_frame = ttk.LabelFrame(content, text="Transaction Cleanup", padding=SPACING_MD)
     archival_frame.pack(fill='x', pady=(0, SPACING_MD))

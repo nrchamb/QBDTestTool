@@ -7,7 +7,8 @@ from tkinter import ttk, scrolledtext
 from actions.monitor_actions import (
     start_monitoring, stop_monitoring, handle_set_deposit_account, clear_search
 )
-from actions.monitor_search_actions import search_transactions
+# Temporarily disabled - search functionality needs refactoring
+# from actions.monitor_search_actions import search_transactions
 from actions.ui_utility_actions import toggle_monitor_log
 from config import AppConfig
 from .ui_constants import (
@@ -89,69 +90,74 @@ def setup_monitor_tab(app):
         variable=app.check_payment_memo_var
     ).pack(side='left', padx=SPACING_SM)
 
-    # Search section
-    search_frame = ttk.LabelFrame(content_frame, text="Search Transactions", padding=SPACING_MD)
-    search_frame.pack(fill='x', padx=SPACING_MD, pady=SPACING_SM)
-
-    # Row 1: Text search and Transaction Type
-    row1 = ttk.Frame(search_frame)
-    row1.pack(fill='x', pady=SPACING_XS)
-
-    ttk.Label(row1, text="Customer/Ref#:").pack(side='left', padx=SPACING_SM)
-    app.search_text = ttk.Entry(row1, width=ENTRY_WIDTH_MEDIUM)
-    app.search_text.pack(side='left', padx=SPACING_SM)
-
-    ttk.Label(row1, text="Transaction ID:").pack(side='left', padx=(SPACING_LG, SPACING_SM))
-    app.search_txn_id = ttk.Entry(row1, width=ENTRY_WIDTH_MEDIUM)
-    app.search_txn_id.pack(side='left', padx=SPACING_SM)
-
-    ttk.Label(row1, text="Type:").pack(side='left', padx=(SPACING_LG, SPACING_SM))
-    app.search_txn_type = ttk.Combobox(row1, width=18, state='readonly',
-                                        values=['All', 'Invoices', 'Sales Receipts', 'Statement Charges'])
-    app.search_txn_type.set('All')
-    app.search_txn_type.pack(side='left', padx=SPACING_SM)
-
-    # Row 2: Date range
-    row2 = ttk.Frame(search_frame)
-    row2.pack(fill='x', pady=SPACING_XS)
-
-    ttk.Label(row2, text="Date From:").pack(side='left', padx=SPACING_SM)
-    app.search_date_from = ttk.Entry(row2, width=ENTRY_WIDTH_SHORT)
-    app.search_date_from.pack(side='left', padx=SPACING_SM)
-    ttk.Label(row2, text="(YYYY-MM-DD)").pack(side='left')
-
-    ttk.Label(row2, text="To:").pack(side='left', padx=(SPACING_LG, SPACING_SM))
-    app.search_date_to = ttk.Entry(row2, width=ENTRY_WIDTH_SHORT)
-    app.search_date_to.pack(side='left', padx=SPACING_SM)
-    ttk.Label(row2, text="(YYYY-MM-DD)").pack(side='left')
-
-    # Row 3: Amount range and buttons
-    row3 = ttk.Frame(search_frame)
-    row3.pack(fill='x', pady=SPACING_XS)
-
-    ttk.Label(row3, text="Amount Min:").pack(side='left', padx=SPACING_SM)
-    app.search_amount_min = ttk.Entry(row3, width=ENTRY_WIDTH_SHORT)
-    app.search_amount_min.pack(side='left', padx=SPACING_SM)
-
-    ttk.Label(row3, text="Max:").pack(side='left', padx=(SPACING_LG, SPACING_SM))
-    app.search_amount_max = ttk.Entry(row3, width=ENTRY_WIDTH_SHORT)
-    app.search_amount_max.pack(side='left', padx=SPACING_SM)
-
-    # Search and Clear buttons
-    ttk.Button(row3, text="Search", command=lambda: search_transactions(app), style='Accent.TButton').pack(side='left', padx=(SPACING_XL, SPACING_SM))
-    ttk.Button(row3, text="Clear", command=lambda: clear_search(app)).pack(side='left', padx=SPACING_SM)
-
-    # Search scope toggle
-    app.search_scope_var = tk.BooleanVar(value=False)  # False = monitored only, True = all QB
-    app.search_scope_check = ttk.Checkbutton(row3, text="Search all QB transactions",
-                                               variable=app.search_scope_var)
-    app.search_scope_check.pack(side='left', padx=(SPACING_XL, SPACING_SM))
-
-    # Toggle for display mode
-    ttk.Label(row3, text="Results:").pack(side='left', padx=(SPACING_LG, SPACING_SM))
-    app.search_display_mode = ttk.Combobox(row3, width=ENTRY_WIDTH_SHORT, state='readonly', values=['Table', 'Popup'])
-    app.search_display_mode.set('Table')
-    app.search_display_mode.pack(side='left', padx=SPACING_SM)
+    # ==================== SEARCH SECTION - TEMPORARILY DISABLED ====================
+    # TODO: Refactor search functionality to be more useful
+    # Current implementation is too complex and needs better UX design
+    #
+    # # Search section
+    # search_frame = ttk.LabelFrame(content_frame, text="Search Transactions", padding=SPACING_MD)
+    # search_frame.pack(fill='x', padx=SPACING_MD, pady=SPACING_SM)
+    #
+    # # Row 1: Text search and Transaction Type
+    # row1 = ttk.Frame(search_frame)
+    # row1.pack(fill='x', pady=SPACING_XS)
+    #
+    # ttk.Label(row1, text="Customer/Ref#:").pack(side='left', padx=SPACING_SM)
+    # app.search_text = ttk.Entry(row1, width=ENTRY_WIDTH_MEDIUM)
+    # app.search_text.pack(side='left', padx=SPACING_SM)
+    #
+    # ttk.Label(row1, text="Transaction ID:").pack(side='left', padx=(SPACING_LG, SPACING_SM))
+    # app.search_txn_id = ttk.Entry(row1, width=ENTRY_WIDTH_MEDIUM)
+    # app.search_txn_id.pack(side='left', padx=SPACING_SM)
+    #
+    # ttk.Label(row1, text="Type:").pack(side='left', padx=(SPACING_LG, SPACING_SM))
+    # app.search_txn_type = ttk.Combobox(row1, width=18, state='readonly',
+    #                                     values=['All', 'Invoices', 'Sales Receipts', 'Statement Charges'])
+    # app.search_txn_type.set('All')
+    # app.search_txn_type.pack(side='left', padx=SPACING_SM)
+    #
+    # # Row 2: Date range
+    # row2 = ttk.Frame(search_frame)
+    # row2.pack(fill='x', pady=SPACING_XS)
+    #
+    # ttk.Label(row2, text="Date From:").pack(side='left', padx=SPACING_SM)
+    # app.search_date_from = ttk.Entry(row2, width=ENTRY_WIDTH_SHORT)
+    # app.search_date_from.pack(side='left', padx=SPACING_SM)
+    # ttk.Label(row2, text="(YYYY-MM-DD)").pack(side='left')
+    #
+    # ttk.Label(row2, text="To:").pack(side='left', padx=(SPACING_LG, SPACING_SM))
+    # app.search_date_to = ttk.Entry(row2, width=ENTRY_WIDTH_SHORT)
+    # app.search_date_to.pack(side='left', padx=SPACING_SM)
+    # ttk.Label(row2, text="(YYYY-MM-DD)").pack(side='left')
+    #
+    # # Row 3: Amount range and buttons
+    # row3 = ttk.Frame(search_frame)
+    # row3.pack(fill='x', pady=SPACING_XS)
+    #
+    # ttk.Label(row3, text="Amount Min:").pack(side='left', padx=SPACING_SM)
+    # app.search_amount_min = ttk.Entry(row3, width=ENTRY_WIDTH_SHORT)
+    # app.search_amount_min.pack(side='left', padx=SPACING_SM)
+    #
+    # ttk.Label(row3, text="Max:").pack(side='left', padx=(SPACING_LG, SPACING_SM))
+    # app.search_amount_max = ttk.Entry(row3, width=ENTRY_WIDTH_SHORT)
+    # app.search_amount_max.pack(side='left', padx=SPACING_SM)
+    #
+    # # Search and Clear buttons
+    # ttk.Button(row3, text="Search", command=lambda: search_transactions(app), style='Accent.TButton').pack(side='left', padx=(SPACING_XL, SPACING_SM))
+    # ttk.Button(row3, text="Clear", command=lambda: clear_search(app)).pack(side='left', padx=SPACING_SM)
+    #
+    # # Search scope toggle
+    # app.search_scope_var = tk.BooleanVar(value=False)  # False = monitored only, True = all QB
+    # app.search_scope_check = ttk.Checkbutton(row3, text="Search all QB transactions",
+    #                                            variable=app.search_scope_var)
+    # app.search_scope_check.pack(side='left', padx=(SPACING_XL, SPACING_SM))
+    #
+    # # Toggle for display mode
+    # ttk.Label(row3, text="Results:").pack(side='left', padx=(SPACING_LG, SPACING_SM))
+    # app.search_display_mode = ttk.Combobox(row3, width=ENTRY_WIDTH_SHORT, state='readonly', values=['Table', 'Popup'])
+    # app.search_display_mode.set('Table')
+    # app.search_display_mode.pack(side='left', padx=SPACING_SM)
+    # ===============================================================================
 
     # Transaction list
     list_frame = ttk.LabelFrame(content_frame, text="Tracked Transactions", padding=SPACING_MD)

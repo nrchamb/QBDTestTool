@@ -7,7 +7,9 @@ Background workers for archiving, deleting, and removing transactions.
 from tkinter import messagebox
 from qb import QBIPCClient, disconnect_qb, QBXMLBuilder, QBXMLParser
 from store.actions import archive_closed_transactions, archive_all_transactions, remove_all_archived
-from app_logging import LOG_NORMAL
+from app_logging import LOG_NORMAL, LOG_DEBUG
+from app_logging.logging_config import should_log
+from config import AppConfig
 
 
 def archive_closed_worker(app):
@@ -191,7 +193,19 @@ def delete_archived_from_qb_worker(app):
                               app._log_create(f"  Deleting invoice {ref}...", LOG_NORMAL))
 
                 request = QBXMLBuilder.build_txn_del('Invoice', inv.txn_id)
+
+                # DEBUG: Log the XML request (only if DEBUG is enabled)
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    app.root.after(0, lambda ref=inv.ref_number, xml=request:
+                                  app._log_create(f"  [DEBUG Invoice {ref}] QBXML Delete Request:\n{xml}", LOG_DEBUG))
+
                 response_xml = qb.execute_request(request)
+
+                # DEBUG: Log the XML response (only if DEBUG is enabled)
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    app.root.after(0, lambda ref=inv.ref_number, xml=response_xml:
+                                  app._log_create(f"  [DEBUG Invoice {ref}] QBXML Delete Response:\n{xml}", LOG_DEBUG))
+
                 result = QBXMLParser.parse_response(response_xml)
 
                 if result['success']:
@@ -219,7 +233,19 @@ def delete_archived_from_qb_worker(app):
                               app._log_create(f"  Deleting sales receipt {ref}...", LOG_NORMAL))
 
                 request = QBXMLBuilder.build_txn_del('SalesReceipt', sr.txn_id)
+
+                # DEBUG: Log the XML request (only if DEBUG is enabled)
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    app.root.after(0, lambda ref=sr.ref_number, xml=request:
+                                  app._log_create(f"  [DEBUG Receipt {ref}] QBXML Delete Request:\n{xml}", LOG_DEBUG))
+
                 response_xml = qb.execute_request(request)
+
+                # DEBUG: Log the XML response (only if DEBUG is enabled)
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    app.root.after(0, lambda ref=sr.ref_number, xml=response_xml:
+                                  app._log_create(f"  [DEBUG Receipt {ref}] QBXML Delete Response:\n{xml}", LOG_DEBUG))
+
                 result = QBXMLParser.parse_response(response_xml)
 
                 if result['success']:
@@ -247,7 +273,19 @@ def delete_archived_from_qb_worker(app):
                               app._log_create(f"  Deleting statement charge {ref}...", LOG_NORMAL))
 
                 request = QBXMLBuilder.build_txn_del('Charge', sc.txn_id)
+
+                # DEBUG: Log the XML request (only if DEBUG is enabled)
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    app.root.after(0, lambda ref=sc.ref_number, xml=request:
+                                  app._log_create(f"  [DEBUG Charge {ref}] QBXML Delete Request:\n{xml}", LOG_DEBUG))
+
                 response_xml = qb.execute_request(request)
+
+                # DEBUG: Log the XML response (only if DEBUG is enabled)
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    app.root.after(0, lambda ref=sc.ref_number, xml=response_xml:
+                                  app._log_create(f"  [DEBUG Charge {ref}] QBXML Delete Response:\n{xml}", LOG_DEBUG))
+
                 result = QBXMLParser.parse_response(response_xml)
 
                 if result['success']:

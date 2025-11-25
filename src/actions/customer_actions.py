@@ -13,21 +13,44 @@ def update_customer_combo(app):
     """
     Update all customer dropdowns with current customer list from state.
 
+    Uses full_name (Customer:Job format) with visual indentation for sub-customers.
+
     Args:
         app: Reference to the main QBDTestToolApp instance
     """
     state = app.store.get_state()
-    customer_names = [f"{c['name']} ({c.get('email', 'no email')})" for c in state.customers]
 
-    # Build ListID mapping (display_name -> list_id)
+    # Build display list with indentation based on sublevel
+    customer_names = []
     app.customer_listid_map = {}
+
     for c in state.customers:
-        display_name = f"{c['name']} ({c.get('email', 'no email')})"
+        # Use full_name which shows Customer:Job hierarchy
+        full_name = c.get('full_name', c['name'])
+        sublevel = c.get('sublevel', 0)
+
+        # Add visual indentation for sub-customers/jobs (2 spaces per level)
+        indent = "  " * sublevel
+        display_name = f"{indent}{full_name}"
+
+        # Add email for additional context
+        email = c.get('email', '')
+        if email:
+            display_name = f"{display_name} ({email})"
+        else:
+            display_name = f"{display_name} (no email)"
+
+        customer_names.append(display_name)
         app.customer_listid_map[display_name] = c['list_id']
 
     # Update all customer comboboxes
     for combo in app.customer_combos:
-        combo['values'] = customer_names
+        # Support both SearchableCombobox and regular Combobox
+        if hasattr(combo, 'set_values'):
+            combo.set_values(customer_names)
+        else:
+            combo['values'] = customer_names
+
         if customer_names:
             combo.current(len(customer_names) - 1)
 

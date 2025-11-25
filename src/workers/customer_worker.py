@@ -9,7 +9,9 @@ from qb import QBIPCClient, disconnect_qb, QBXMLBuilder, QBXMLParser
 from qb.connection import QBConnectionError
 from mock_generation import CustomerGenerator
 from store import add_customer
-from app_logging import LOG_NORMAL, LOG_VERBOSE
+from app_logging import LOG_NORMAL, LOG_VERBOSE, LOG_DEBUG
+from app_logging.logging_config import should_log
+from config import AppConfig
 
 
 def create_customer_worker(app, email: str, field_config: dict, manual_values: dict,
@@ -40,9 +42,19 @@ def create_customer_worker(app, email: str, field_config: dict, manual_values: d
         # Build QBXML request
         request = QBXMLBuilder.build_customer_add(customer_data)
 
+        # DEBUG: Log the XML request (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda name=customer_data['name'], xml=request:
+                          app._log_create(f"  [DEBUG {name}] QBXML Request:\n{xml}", LOG_DEBUG))
+
         # Send to QuickBooks
         qb = QBIPCClient()
         response_xml = qb.execute_request(request)
+
+        # DEBUG: Log the XML response (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda name=customer_data['name'], xml=response_xml:
+                          app._log_create(f"  [DEBUG {name}] QBXML Response:\n{xml}", LOG_DEBUG))
 
         # Parse response
         parser_result = QBXMLParser.parse_response(response_xml)
@@ -83,7 +95,19 @@ def create_customer_worker(app, email: str, field_config: dict, manual_values: d
 
                     # Build and send QBXML request
                     request = QBXMLBuilder.build_customer_add(job_data)
+
+                    # DEBUG: Log the XML request (only if DEBUG is enabled)
+                    if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                        app.root.after(0, lambda jn=job_num, name=job_data['name'], xml=request:
+                                      app._log_create(f"  [DEBUG Job {jn}] QBXML Request:\n{xml}", LOG_DEBUG))
+
                     response_xml = qb.execute_request(request)
+
+                    # DEBUG: Log the XML response (only if DEBUG is enabled)
+                    if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                        app.root.after(0, lambda jn=job_num, name=job_data['name'], xml=response_xml:
+                                      app._log_create(f"  [DEBUG Job {jn}] QBXML Response:\n{xml}", LOG_DEBUG))
+
                     parser_result = QBXMLParser.parse_response(response_xml)
 
                     if not parser_result['success']:
@@ -115,7 +139,19 @@ def create_customer_worker(app, email: str, field_config: dict, manual_values: d
 
                                 # Build and send QBXML request
                                 request = QBXMLBuilder.build_customer_add(subjob_data)
+
+                                # DEBUG: Log the XML request (only if DEBUG is enabled)
+                                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                                    app.root.after(0, lambda jn=job_num, sn=subjob_num, name=subjob_data['name'], xml=request:
+                                                  app._log_create(f"  [DEBUG SubJob {jn}.{sn}] QBXML Request:\n{xml}", LOG_DEBUG))
+
                                 response_xml = qb.execute_request(request)
+
+                                # DEBUG: Log the XML response (only if DEBUG is enabled)
+                                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                                    app.root.after(0, lambda jn=job_num, sn=subjob_num, name=subjob_data['name'], xml=response_xml:
+                                                  app._log_create(f"  [DEBUG SubJob {jn}.{sn}] QBXML Response:\n{xml}", LOG_DEBUG))
+
                                 parser_result = QBXMLParser.parse_response(response_xml)
 
                                 if not parser_result['success']:

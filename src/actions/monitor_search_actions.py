@@ -2,6 +2,25 @@
 Monitor search actions for QuickBooks Desktop Test Tool.
 
 Handles transaction search and display functionality.
+
+===============================================================================
+TEMPORARILY DISABLED - 2025-01-25
+===============================================================================
+
+This module contains search functionality that is currently disabled due to:
+1. Overly complex UI with too many fields
+2. Unclear UX - users don't understand when to use it
+3. Performance issues when searching all QB transactions
+4. Needs refactoring to be more useful and intuitive
+
+TODO: Redesign search with:
+- Simpler interface (single search box)
+- Clear use cases
+- Better performance
+- Integration with main transaction table filtering
+
+For now, users can use the transaction table's built-in sorting/filtering.
+===============================================================================
 """
 
 import tkinter as tk
@@ -11,13 +30,20 @@ from datetime import datetime
 from qb import QBIPCClient, QBXMLBuilder, QBXMLParser
 
 
-def search_transactions(app):
+# DISABLED - See module docstring above
+def search_transactions(app):  # pragma: no cover
     """
     Search transactions based on search criteria.
 
     Args:
         app: Reference to the main QBDTestToolApp instance
     """
+    # DISABLED - Functionality removed
+    messagebox.showinfo("Feature Disabled",
+                       "Transaction search is temporarily disabled.\n\n"
+                       "Use the column headers in the transaction table to sort and filter.")
+    return
+
     # Get search parameters
     search_text = app.search_text.get().strip().lower()
     txn_id = app.search_txn_id.get().strip()

@@ -21,7 +21,9 @@ class DataLoader:
         'success': bool,
         'data': list,  # The loaded entities
         'count': int,  # Number of entities loaded
-        'error': str or None  # Error message if failed
+        'error': str or None,  # Error message if failed
+        'request_xml': str,  # QBXML request (for debug logging)
+        'response_xml': str  # QBXML response (for debug logging)
     }
     """
 
@@ -31,7 +33,7 @@ class DataLoader:
         Load items from QuickBooks.
 
         Returns:
-            dict: Result with success status, data (list of items), count, and error
+            dict: Result with success status, data (list of items), count, error, and XML
         """
         try:
             # Build request
@@ -49,7 +51,9 @@ class DataLoader:
                     'success': False,
                     'data': [],
                     'count': 0,
-                    'error': parser_result.get('error', 'Unknown parsing error')
+                    'error': parser_result.get('error', 'Unknown parsing error'),
+                    'request_xml': request,
+                    'response_xml': response_xml
                 }
 
             # Extract items
@@ -59,7 +63,9 @@ class DataLoader:
                 'success': True,
                 'data': items,
                 'count': len(items),
-                'error': None
+                'error': None,
+                'request_xml': request,
+                'response_xml': response_xml
             }
 
         except QBConnectionError as e:
@@ -67,14 +73,18 @@ class DataLoader:
                 'success': False,
                 'data': [],
                 'count': 0,
-                'error': f"QuickBooks connection error: {str(e)}"
+                'error': f"QuickBooks connection error: {str(e)}",
+                'request_xml': '',
+                'response_xml': ''
             }
         except Exception as e:
             return {
                 'success': False,
                 'data': [],
                 'count': 0,
-                'error': f"Failed to load items: {str(e)}"
+                'error': f"Failed to load items: {str(e)}",
+                'request_xml': '',
+                'response_xml': ''
             }
 
     @staticmethod
@@ -83,7 +93,7 @@ class DataLoader:
         Load payment terms from QuickBooks.
 
         Returns:
-            dict: Result with success status, data (list of terms), count, and error
+            dict: Result with success status, data (list of terms), count, error, and XML
         """
         try:
             # Build request
@@ -101,7 +111,9 @@ class DataLoader:
                     'success': False,
                     'data': [],
                     'count': 0,
-                    'error': parser_result.get('error', 'Unknown parsing error')
+                    'error': parser_result.get('error', 'Unknown parsing error'),
+                    'request_xml': request,
+                    'response_xml': response_xml
                 }
 
             # Extract terms
@@ -111,7 +123,9 @@ class DataLoader:
                 'success': True,
                 'data': terms,
                 'count': len(terms),
-                'error': None
+                'error': None,
+                'request_xml': request,
+                'response_xml': response_xml
             }
 
         except QBConnectionError as e:
@@ -119,14 +133,18 @@ class DataLoader:
                 'success': False,
                 'data': [],
                 'count': 0,
-                'error': f"QuickBooks connection error: {str(e)}"
+                'error': f"QuickBooks connection error: {str(e)}",
+                'request_xml': '',
+                'response_xml': ''
             }
         except Exception as e:
             return {
                 'success': False,
                 'data': [],
                 'count': 0,
-                'error': f"Failed to load terms: {str(e)}"
+                'error': f"Failed to load terms: {str(e)}",
+                'request_xml': '',
+                'response_xml': ''
             }
 
     @staticmethod
@@ -135,7 +153,7 @@ class DataLoader:
         Load classes from QuickBooks.
 
         Returns:
-            dict: Result with success status, data (list of classes), count, and error
+            dict: Result with success status, data (list of classes), count, error, and XML
         """
         try:
             # Build request
@@ -153,7 +171,9 @@ class DataLoader:
                     'success': False,
                     'data': [],
                     'count': 0,
-                    'error': parser_result.get('error', 'Unknown parsing error')
+                    'error': parser_result.get('error', 'Unknown parsing error'),
+                    'request_xml': request,
+                    'response_xml': response_xml
                 }
 
             # Extract classes
@@ -163,7 +183,9 @@ class DataLoader:
                 'success': True,
                 'data': classes,
                 'count': len(classes),
-                'error': None
+                'error': None,
+                'request_xml': request,
+                'response_xml': response_xml
             }
 
         except QBConnectionError as e:
@@ -171,14 +193,18 @@ class DataLoader:
                 'success': False,
                 'data': [],
                 'count': 0,
-                'error': f"QuickBooks connection error: {str(e)}"
+                'error': f"QuickBooks connection error: {str(e)}",
+                'request_xml': '',
+                'response_xml': ''
             }
         except Exception as e:
             return {
                 'success': False,
                 'data': [],
                 'count': 0,
-                'error': f"Failed to load classes: {str(e)}"
+                'error': f"Failed to load classes: {str(e)}",
+                'request_xml': '',
+                'response_xml': ''
             }
 
     @staticmethod
@@ -190,7 +216,7 @@ class DataLoader:
             filter_deposit_accounts: If True, filter to only Bank and OtherCurrentAsset types
 
         Returns:
-            dict: Result with success status, data (list of accounts), count, and error
+            dict: Result with success status, data (list of accounts), count, error, and XML
         """
         try:
             # Build request
@@ -208,7 +234,9 @@ class DataLoader:
                     'success': False,
                     'data': [],
                     'count': 0,
-                    'error': parser_result.get('error', 'Unknown parsing error')
+                    'error': parser_result.get('error', 'Unknown parsing error'),
+                    'request_xml': request,
+                    'response_xml': response_xml
                 }
 
             # Extract accounts
@@ -225,7 +253,9 @@ class DataLoader:
                 'success': True,
                 'data': accounts,
                 'count': len(accounts),
-                'error': None
+                'error': None,
+                'request_xml': request,
+                'response_xml': response_xml
             }
 
         except QBConnectionError as e:
@@ -233,14 +263,18 @@ class DataLoader:
                 'success': False,
                 'data': [],
                 'count': 0,
-                'error': f"QuickBooks connection error: {str(e)}"
+                'error': f"QuickBooks connection error: {str(e)}",
+                'request_xml': '',
+                'response_xml': ''
             }
         except Exception as e:
             return {
                 'success': False,
                 'data': [],
                 'count': 0,
-                'error': f"Failed to load accounts: {str(e)}"
+                'error': f"Failed to load accounts: {str(e)}",
+                'request_xml': '',
+                'response_xml': ''
             }
 
     @staticmethod
@@ -252,7 +286,7 @@ class DataLoader:
         to distinguish from app-created customers.
 
         Returns:
-            dict: Result with success status, data (list of customers), count, and error
+            dict: Result with success status, data (list of customers), count, error, and XML
         """
         try:
             # Build request
@@ -270,7 +304,9 @@ class DataLoader:
                     'success': False,
                     'data': [],
                     'count': 0,
-                    'error': parser_result.get('error', 'Unknown parsing error')
+                    'error': parser_result.get('error', 'Unknown parsing error'),
+                    'request_xml': request,
+                    'response_xml': response_xml
                 }
 
             # Extract customers
@@ -284,7 +320,9 @@ class DataLoader:
                 'success': True,
                 'data': loaded_customers,
                 'count': len(loaded_customers),
-                'error': None
+                'error': None,
+                'request_xml': request,
+                'response_xml': response_xml
             }
 
         except QBConnectionError as e:
@@ -292,12 +330,16 @@ class DataLoader:
                 'success': False,
                 'data': [],
                 'count': 0,
-                'error': f"QuickBooks connection error: {str(e)}"
+                'error': f"QuickBooks connection error: {str(e)}",
+                'request_xml': '',
+                'response_xml': ''
             }
         except Exception as e:
             return {
                 'success': False,
                 'data': [],
                 'count': 0,
-                'error': f"Failed to load customers: {str(e)}"
+                'error': f"Failed to load customers: {str(e)}",
+                'request_xml': '',
+                'response_xml': ''
             }

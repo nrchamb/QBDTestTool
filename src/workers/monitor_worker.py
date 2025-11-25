@@ -11,7 +11,9 @@ from store import (
     InvoiceRecord, SalesReceiptRecord, StatementChargeRecord,
     update_invoice, update_sales_receipt, update_statement_charge, add_verification_result
 )
-from app_logging import LOG_NORMAL, LOG_VERBOSE
+from app_logging import LOG_NORMAL, LOG_VERBOSE, LOG_DEBUG
+from app_logging.logging_config import should_log
+from config import AppConfig
 
 
 def monitor_loop_worker(app):
@@ -67,7 +69,18 @@ def check_invoices(app):
         try:
             # Query invoice
             request = QBXMLBuilder.build_invoice_query(txn_id=invoice.txn_id)
+
+            # DEBUG: Log the XML request (only if DEBUG is enabled)
+            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                app.root.after(0, lambda ref=invoice.ref_number, xml=request:
+                              app._log_monitor(f"  [DEBUG Invoice {ref}] QBXML Query Request:\n{xml}", LOG_DEBUG))
+
             response_xml = qb.execute_request(request)
+
+            # DEBUG: Log the XML response (only if DEBUG is enabled)
+            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                app.root.after(0, lambda ref=invoice.ref_number, xml=response_xml:
+                              app._log_monitor(f"  [DEBUG Invoice {ref}] QBXML Query Response:\n{xml}", LOG_DEBUG))
 
             parser_result = QBXMLParser.parse_response(response_xml)
 
@@ -121,7 +134,19 @@ def check_sales_receipts(app):
     for sr in state.sales_receipts:
         try:
             request = QBXMLBuilder.build_sales_receipt_query(txn_id=sr.txn_id)
+
+            # DEBUG: Log the XML request (only if DEBUG is enabled)
+            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                app.root.after(0, lambda ref=sr.ref_number, xml=request:
+                              app._log_monitor(f"  [DEBUG Receipt {ref}] QBXML Query Request:\n{xml}", LOG_DEBUG))
+
             response_xml = qb.execute_request(request)
+
+            # DEBUG: Log the XML response (only if DEBUG is enabled)
+            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                app.root.after(0, lambda ref=sr.ref_number, xml=response_xml:
+                              app._log_monitor(f"  [DEBUG Receipt {ref}] QBXML Query Response:\n{xml}", LOG_DEBUG))
+
             parser_result = QBXMLParser.parse_response(response_xml)
 
             if parser_result['success'] and parser_result['data']['sales_receipts']:
@@ -171,7 +196,19 @@ def check_statement_charges(app):
     for charge in state.statement_charges:
         try:
             request = QBXMLBuilder.build_charge_query(txn_id=charge.txn_id)
+
+            # DEBUG: Log the XML request (only if DEBUG is enabled)
+            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                app.root.after(0, lambda ref=charge.ref_number, xml=request:
+                              app._log_monitor(f"  [DEBUG Charge {ref}] QBXML Query Request:\n{xml}", LOG_DEBUG))
+
             response_xml = qb.execute_request(request)
+
+            # DEBUG: Log the XML response (only if DEBUG is enabled)
+            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                app.root.after(0, lambda ref=charge.ref_number, xml=response_xml:
+                              app._log_monitor(f"  [DEBUG Charge {ref}] QBXML Query Response:\n{xml}", LOG_DEBUG))
+
             parser_result = QBXMLParser.parse_response(response_xml)
 
             if parser_result['success'] and parser_result['data']['charges']:

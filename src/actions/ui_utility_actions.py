@@ -224,8 +224,50 @@ def save_log_level_setting(app):
     Args:
         app: Reference to the main QBDTestToolApp instance
     """
+    from app_logging import LOG_MINIMAL
+    from tkinter import messagebox
+
     new_level = app.log_level_combo.get()
     AppConfig.save_log_level(new_level)
+
+    # Log confirmation to both tabs
+    app._log_create(f"✓ Log level set to: {new_level}", LOG_MINIMAL)
+    app._log_monitor(f"✓ Log level set to: {new_level}", LOG_MINIMAL)
+
+    # Show detailed explanation in a message box
+    if new_level == "MINIMAL":
+        msg = ("MINIMAL Logging Active\n\n"
+               "You will only see:\n"
+               "• Summary messages\n"
+               "• Errors and warnings\n"
+               "• Final results")
+    elif new_level == "NORMAL":
+        msg = ("NORMAL Logging Active (Default)\n\n"
+               "You will see:\n"
+               "• All MINIMAL messages\n"
+               "• Operation start/completion\n"
+               "• Success/failure for batch operations\n"
+               "• Error details")
+    elif new_level == "VERBOSE":
+        msg = ("VERBOSE Logging Active\n\n"
+               "You will see:\n"
+               "• All NORMAL messages\n"
+               "• Progress for each item being processed\n"
+               "• Individual transaction creation/updates\n"
+               "• Detailed step-by-step progress")
+    elif new_level == "DEBUG":
+        msg = ("DEBUG Logging Active\n\n"
+               "You will see:\n"
+               "• All VERBOSE messages\n"
+               "• Full QBXML request XML (sent to QuickBooks)\n"
+               "• Full QBXML response XML (received from QuickBooks)\n"
+               "• Raw data structures\n\n"
+               "⚠️ Note: Creates large logs - for troubleshooting only!\n"
+               "⚠️ Only works for transaction creation (Invoices, Sales Receipts, Charges)")
+    else:
+        msg = f"Log level set to: {new_level}"
+
+    messagebox.showinfo("Log Level Changed", msg)
 
 
 def save_persistence_settings(app):

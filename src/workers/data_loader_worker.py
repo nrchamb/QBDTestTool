@@ -7,7 +7,9 @@ Background workers for loading data from QuickBooks (items, terms, classes, acco
 from tkinter import messagebox
 from qb import DataLoader, disconnect_qb
 from store import set_items, set_terms, set_classes, set_accounts
-from app_logging import LOG_NORMAL, LOG_VERBOSE
+from app_logging import LOG_NORMAL, LOG_VERBOSE, LOG_DEBUG
+from app_logging.logging_config import should_log
+from config import AppConfig
 
 
 def load_items_worker(app):
@@ -17,6 +19,13 @@ def load_items_worker(app):
 
         # Load items from QuickBooks
         result = DataLoader.load_items()
+
+        # DEBUG: Log the XML (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda req=result.get('request_xml', ''):
+                          app._log_create(f"  [DEBUG Items] QBXML Request:\n{req}", LOG_DEBUG))
+            app.root.after(0, lambda res=result.get('response_xml', ''):
+                          app._log_create(f"  [DEBUG Items] QBXML Response:\n{res}", LOG_DEBUG))
 
         if result['success']:
             items = result['data']
@@ -64,6 +73,13 @@ def load_terms_worker(app):
         # Load terms from QuickBooks
         result = DataLoader.load_terms()
 
+        # DEBUG: Log the XML (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda req=result.get('request_xml', ''):
+                          app._log_create(f"  [DEBUG Terms] QBXML Request:\n{req}", LOG_DEBUG))
+            app.root.after(0, lambda res=result.get('response_xml', ''):
+                          app._log_create(f"  [DEBUG Terms] QBXML Response:\n{res}", LOG_DEBUG))
+
         if result['success']:
             terms = result['data']
             count = result['count']
@@ -105,6 +121,13 @@ def load_classes_worker(app):
 
         # Load classes from QuickBooks
         result = DataLoader.load_classes()
+
+        # DEBUG: Log the XML (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda req=result.get('request_xml', ''):
+                          app._log_create(f"  [DEBUG Classes] QBXML Request:\n{req}", LOG_DEBUG))
+            app.root.after(0, lambda res=result.get('response_xml', ''):
+                          app._log_create(f"  [DEBUG Classes] QBXML Response:\n{res}", LOG_DEBUG))
 
         if result['success']:
             classes = result['data']
@@ -148,6 +171,13 @@ def load_accounts_worker(app):
         # Load accounts from QuickBooks (filtered for deposit accounts)
         result = DataLoader.load_accounts(filter_deposit_accounts=True)
 
+        # DEBUG: Log the XML (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda req=result.get('request_xml', ''):
+                          app._log_create(f"  [DEBUG Accounts] QBXML Request:\n{req}", LOG_DEBUG))
+            app.root.after(0, lambda res=result.get('response_xml', ''):
+                          app._log_create(f"  [DEBUG Accounts] QBXML Response:\n{res}", LOG_DEBUG))
+
         if result['success']:
             deposit_accounts = result['data']
             count = result['count']
@@ -185,6 +215,13 @@ def load_customers_worker(app):
         # Load customers from QuickBooks (already marked with created_by_app = False)
         result = DataLoader.load_customers()
 
+        # DEBUG: Log the XML (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda req=result.get('request_xml', ''):
+                          app._log_create(f"  [DEBUG Customers] QBXML Request:\n{req}", LOG_DEBUG))
+            app.root.after(0, lambda res=result.get('response_xml', ''):
+                          app._log_create(f"  [DEBUG Customers] QBXML Response:\n{res}", LOG_DEBUG))
+
         if result['success']:
             loaded_customers = result['data']
             count = result['count']
@@ -217,6 +254,14 @@ def load_all_worker(app):
         # Load customers
         app.root.after(0, lambda: app._log_create("Loading customers...", LOG_VERBOSE))
         result = DataLoader.load_customers()
+
+        # DEBUG: Log the XML (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda req=result.get('request_xml', ''):
+                          app._log_create(f"  [DEBUG Customers] QBXML Request:\n{req}", LOG_DEBUG))
+            app.root.after(0, lambda res=result.get('response_xml', ''):
+                          app._log_create(f"  [DEBUG Customers] QBXML Response:\n{res}", LOG_DEBUG))
+
         if result['success']:
             app.store.dispatch({'type': 'SET_CUSTOMERS', 'payload': result['data']})
             app.root.after(0, lambda: app._log_create(f"✓ Loaded {result['count']} customers", LOG_VERBOSE))
@@ -227,6 +272,14 @@ def load_all_worker(app):
         # Load items
         app.root.after(0, lambda: app._log_create("Loading items...", LOG_VERBOSE))
         result = DataLoader.load_items()
+
+        # DEBUG: Log the XML (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda req=result.get('request_xml', ''):
+                          app._log_create(f"  [DEBUG Items] QBXML Request:\n{req}", LOG_DEBUG))
+            app.root.after(0, lambda res=result.get('response_xml', ''):
+                          app._log_create(f"  [DEBUG Items] QBXML Response:\n{res}", LOG_DEBUG))
+
         if result['success']:
             app.store.dispatch(set_items(result['data']))
             count = result['count']
@@ -240,6 +293,14 @@ def load_all_worker(app):
         # Load terms
         app.root.after(0, lambda: app._log_create("Loading terms...", LOG_VERBOSE))
         result = DataLoader.load_terms()
+
+        # DEBUG: Log the XML (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda req=result.get('request_xml', ''):
+                          app._log_create(f"  [DEBUG Terms] QBXML Request:\n{req}", LOG_DEBUG))
+            app.root.after(0, lambda res=result.get('response_xml', ''):
+                          app._log_create(f"  [DEBUG Terms] QBXML Response:\n{res}", LOG_DEBUG))
+
         if result['success']:
             terms = result['data']
             app.store.dispatch(set_terms(terms))
@@ -259,6 +320,14 @@ def load_all_worker(app):
         # Load classes
         app.root.after(0, lambda: app._log_create("Loading classes...", LOG_VERBOSE))
         result = DataLoader.load_classes()
+
+        # DEBUG: Log the XML (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda req=result.get('request_xml', ''):
+                          app._log_create(f"  [DEBUG Classes] QBXML Request:\n{req}", LOG_DEBUG))
+            app.root.after(0, lambda res=result.get('response_xml', ''):
+                          app._log_create(f"  [DEBUG Classes] QBXML Response:\n{res}", LOG_DEBUG))
+
         if result['success']:
             classes = result['data']
             app.store.dispatch(set_classes(classes))
@@ -278,6 +347,14 @@ def load_all_worker(app):
         # Load accounts
         app.root.after(0, lambda: app._log_create("Loading accounts...", LOG_VERBOSE))
         result = DataLoader.load_accounts(filter_deposit_accounts=True)
+
+        # DEBUG: Log the XML (only if DEBUG is enabled)
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda req=result.get('request_xml', ''):
+                          app._log_create(f"  [DEBUG Accounts] QBXML Request:\n{req}", LOG_DEBUG))
+            app.root.after(0, lambda res=result.get('response_xml', ''):
+                          app._log_create(f"  [DEBUG Accounts] QBXML Response:\n{res}", LOG_DEBUG))
+
         if result['success']:
             app.store.dispatch(set_accounts(result['data']))
             count = result['count']

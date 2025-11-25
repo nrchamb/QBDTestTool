@@ -11,6 +11,8 @@ from mock_generation import SalesReceiptGenerator
 from store.state import SalesReceiptRecord
 from store.actions import add_sales_receipt
 from app_logging import LOG_NORMAL, LOG_VERBOSE, LOG_DEBUG
+from app_logging.logging_config import should_log
+from config import AppConfig
 
 
 def create_sales_receipt_worker(app, customer: dict, num_receipts: int,
@@ -75,17 +77,19 @@ def create_sales_receipt_worker(app, customer: dict, num_receipts: int,
                 # Build QBXML request
                 request = QBXMLBuilder.build_sales_receipt_add(receipt_data)
 
-                # DEBUG: Log the XML request
+                # DEBUG: Log the XML request (only if DEBUG is enabled)
                 receipt_num = i + 1
-                app.root.after(0, lambda n=receipt_num, xml=request:
-                              app._log_create(f"  [DEBUG {n}] QBXML Request:\n{xml}", LOG_DEBUG))
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    app.root.after(0, lambda n=receipt_num, xml=request:
+                                  app._log_create(f"  [DEBUG {n}] QBXML Request:\n{xml}", LOG_DEBUG))
 
                 # Send to QuickBooks
                 response_xml = qb.execute_request(request)
 
-                # DEBUG: Log the XML response
-                app.root.after(0, lambda n=receipt_num, xml=response_xml:
-                              app._log_create(f"  [DEBUG {n}] QBXML Response:\n{xml}", LOG_DEBUG))
+                # DEBUG: Log the XML response (only if DEBUG is enabled)
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    app.root.after(0, lambda n=receipt_num, xml=response_xml:
+                                  app._log_create(f"  [DEBUG {n}] QBXML Response:\n{xml}", LOG_DEBUG))
 
                 # Parse response
                 parser_result = QBXMLParser.parse_response(response_xml)

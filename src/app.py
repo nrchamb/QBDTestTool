@@ -225,6 +225,29 @@ class QBDTestToolApp:
         thread = threading.Thread(target=clear_session_worker, args=(self,), daemon=True)
         thread.start()
 
+    def _open_data_folder(self):
+        """Open the application data folder in file explorer."""
+        import subprocess
+        import platform
+        from pathlib import Path
+
+        data_folder = Path.home() / ".qbd_test_tool"
+
+        # Ensure folder exists
+        data_folder.mkdir(parents=True, exist_ok=True)
+
+        # Open in file explorer based on OS
+        system = platform.system()
+        try:
+            if system == "Windows":
+                subprocess.run(['explorer', str(data_folder)])
+            elif system == "Darwin":  # macOS
+                subprocess.run(['open', str(data_folder)])
+            else:  # Linux
+                subprocess.run(['xdg-open', str(data_folder)])
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open folder:\n{e}")
+
     def _verify_session_transactions(self):
         """Verify all session transactions against QuickBooks."""
         from qb.connection_check import is_quickbooks_available
