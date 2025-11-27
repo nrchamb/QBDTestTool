@@ -1,0 +1,388 @@
+"""
+Main application entry point - Tkinter GUI for QBD Test Tool.
+"""
+
+import tkinter as tk
+from tkinter import ttk, messagebox, scrolledtext
+import threading
+import time
+from datetime import datetime
+from typing import Optional
+import multiprocessing
+
+from store import (
+    Store, AppState, InvoiceRecord, SalesReceiptRecord, StatementChargeRecord,
+    add_customer, set_items, set_terms, set_classes, set_accounts, add_invoice, update_invoice,
+    add_sales_receipt, update_sales_receipt, add_statement_charge, update_statement_charge,
+    set_monitoring, add_verification_result, set_expected_deposit_account
+)
+from store.actions import set_create_sash_ratio, set_monitor_sash_ratio
+from config import AppConfig
+from qb import QBIPCClient, DataLoader, start_manager, stop_manager
+from qb.qbfc_connection import QBFCConnectionError
+from trayapp import TrayIconManager, on_closing, force_close
+from ui.create_tab_setup import setup_create_tab
+from ui.monitor_tab_setup import setup_monitor_tab
+from ui.verify_tab_setup import setup_verify_tab
+from ui.settings_tab_setup import setup_settings_tab
+from ui.setup_subtab_setup import setup_setup_subtab
+from app_logging import log_create, log_monitor
+from ui.ui_utils import create_scrollable_frame
+from ui.ui_constants import SPACING_SM
+from actions.customer_actions import create_customer, update_customer_combo
+from actions.monitor_actions import update_accounts_combo
+from workers import (
+    load_items_worker, load_terms_worker, load_classes_worker, load_accounts_worker,
+    load_customers_worker, load_all_worker, create_customer_worker, create_invoice_worker,
+    create_sales_receipt_worker, create_charge_worker
+)
+
+
+class QBDTestToolApp:
+    """Main application class."""
+
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("QBD Test Tool")
+
+        # Load and apply saved window geometry
+        window_cfg = AppConfig.get_window_geometry()
+        if window_cfg['x'] is not None and window_cfg['y'] is not None:
+            self.root.geometry(f"{window_cfg['width']}x{window_cfg['height']}+{window_cfg['x']}+{window_cfg['y']}")
+        else:
+            self.root.geometry(f"{window_cfg['width']}x{window_cfg['height']}")
+
+        # Initialize Redux store
+        self.store = Store()
+        self.store.subscribe(self._on_state_change)
+
+        # Customer ListID mapping (to avoid index mismatch with nested jobs)
+        self.customer_listid_map = {}  # Maps display_name -> list_id
+
+        # Terms and Classes ListID mappings (for O(1) lookup during transaction creation)
+        self.terms_listid_map = {}  # Maps term name -> list_id
+        self.classes_listid_map = {}  # Maps class full_name -> list_id
+
+        # Monitoring thread
+        self.monitor_thread: Optional[threading.Thread] = None
+        self.monitoring_stop_flag = False
+
+        # Start connection manager process
+        start_manager()
+
+        # Initialize tray icon
+        self.tray_icon = TrayIconManager(
+            on_exit=lambda: on_closing(self),
+            on_force_close=lambda: force_close(self)
+        )
+        self.tray_icon.start()
+
+        # Load saved sash ratios BEFORE UI setup (needed for paned.add height param)
+        ui_state = AppConfig.get_ui_state()
+        self._create_sash_ratio = ui_state.get('create_log_sash_pos') or 0.8
+        self._monitor_sash_ratio = ui_state.get('monitor_log_sash_pos') or 0.8
+        self._window_height = window_cfg['height']
+
+        # Setup UI (uses the sash ratios in paned.add())
+        self._setup_ui()
+
+        # Also store in Redux for consistency
+        if ui_state.get('create_log_sash_pos') is not None:
+            self.store.dispatch(set_create_sash_ratio(self._create_sash_ratio))
+        if ui_state.get('monitor_log_sash_pos') is not None:
+            self.store.dispatch(set_monitor_sash_ratio(self._monitor_sash_ratio))
+
+        # Setup graceful shutdown handler
+        self.root.protocol("WM_DELETE_WINDOW", lambda: on_closing(self))
+
+        # Auto-load previous session if enabled
+        self._check_and_load_session()
+
+    def _setup_ui(self):
+        """Setup the user interface."""
+        # Create notebook (tabs)
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill='both', expand=True, padx=SPACING_SM, pady=SPACING_SM)
+
+        # Tab 1: Create Data
+        self.create_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.create_tab, text='Create Data')
+        setup_create_tab(self)
+
+        # Tab 2: Monitor Transactions
+        self.monitor_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.monitor_tab, text='Monitor Transactions')
+        setup_monitor_tab(self)
+
+        # Tab 3: Verification Results
+        self.verify_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.verify_tab, text='Verification Results')
+        setup_verify_tab(self)
+
+        # Tab 4: Settings
+        self.settings_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.settings_tab, text='Settings')
+        setup_settings_tab(self)
+
+        # Status bar
+        self.status_bar = tk.Label(self.root, text="Ready", bd=1, relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def _create_scrollable_frame(self, parent):
+        """Create a scrollable frame (wrapper for ui_utils.create_scrollable_frame)."""
+        return create_scrollable_frame(parent)
+
+    # Wrapper methods for logging - kept in app.py for convenience
+    def _log_create(self, message: str, level: str = None):
+        """Log message to create tab (wrapper for logging_utils.log_create)."""
+        if level is None:
+            log_create(self, message)
+        else:
+            log_create(self, message, level)
+
+    def _log_monitor(self, message: str, level: str = None):
+        """Log message to monitor tab (wrapper for logging_utils.log_monitor)."""
+        if level is None:
+            log_monitor(self, message)
+        else:
+            log_monitor(self, message, level)
+
+### MARK: Wrapper functions that call workers in main app.
+# This is done because we disable the button before launching the worker and moving them to a separate file and updating actions in-between is unnecessary overhead for a small action.
+
+    def _load_items(self):
+        """Load items from QuickBooks (wrapper - launches background thread)."""
+        # Disable button
+        self.load_items_btn.config(state='disabled')
+        self.status_bar.config(text="Loading items from QuickBooks...")
+        self.items_status_label.config(text="Loading...", foreground='orange')
+
+        # Launch background thread
+        thread = threading.Thread(target=load_items_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _load_terms(self):
+        """Load terms from QuickBooks (wrapper - launches background thread)."""
+        # Disable button
+        self.load_terms_btn.config(state='disabled')
+        self.status_bar.config(text="Loading terms from QuickBooks...")
+
+        # Launch background thread
+        thread = threading.Thread(target=load_terms_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _load_classes(self):
+        """Load classes from QuickBooks (wrapper - launches background thread)."""
+        # Disable button
+        self.load_classes_btn.config(state='disabled')
+        self.status_bar.config(text="Loading classes from QuickBooks...")
+
+        # Launch background thread
+        thread = threading.Thread(target=load_classes_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _load_accounts(self):
+        """Load accounts from QuickBooks (wrapper - launches background thread)."""
+        # Disable button
+        self.load_accounts_btn.config(state='disabled')
+        self.status_bar.config(text="Loading accounts from QuickBooks...")
+        self.accounts_status_label.config(text="Loading...", foreground='orange')
+
+        # Launch background thread
+        thread = threading.Thread(target=load_accounts_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _load_all(self):
+        """Load all data from QuickBooks (customers, items, terms, classes, accounts)."""
+        # Disable Load All button
+        self.load_all_btn.config(state='disabled')
+        self.status_bar.config(text="Loading all data from QuickBooks...")
+
+        # Launch background thread
+        thread = threading.Thread(target=load_all_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _load_customers(self):
+        """Load customers from QuickBooks (wrapper - launches background thread)."""
+        # Disable button
+        self.load_customers_btn.config(state='disabled')
+        self.status_bar.config(text="Loading customers from QuickBooks...")
+
+        # Launch background thread
+        thread = threading.Thread(target=load_customers_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _update_customer_combo(self):
+        """Update all customer dropdowns (wrapper for customer_actions.update_customer_combo)."""
+        update_customer_combo(self)
+
+    def _update_accounts_combo(self):
+        """Update deposit account dropdown in Monitor tab (wrapper for monitor_actions.update_accounts_combo)."""
+        update_accounts_combo(self)
+
+    def _save_session_now(self):
+        """Save current session (wrapper - launches background thread)."""
+        from workers.session_worker import save_session_worker
+        thread = threading.Thread(target=save_session_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _load_session_now(self):
+        """Load previous session (wrapper - launches background thread)."""
+        from workers.session_worker import load_session_worker
+        thread = threading.Thread(target=load_session_worker, args=(self, False), daemon=True)
+        thread.start()
+
+    def _clear_session(self):
+        """Clear session data (wrapper - launches background thread)."""
+        from workers.session_worker import clear_session_worker
+        thread = threading.Thread(target=clear_session_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _open_data_folder(self):
+        """Open the application data folder in file explorer."""
+        import subprocess
+        import platform
+        from pathlib import Path
+
+        data_folder = Path.home() / ".qbd_test_tool"
+
+        # Ensure folder exists
+        data_folder.mkdir(parents=True, exist_ok=True)
+
+        # Open in file explorer based on OS
+        system = platform.system()
+        try:
+            if system == "Windows":
+                subprocess.run(['explorer', str(data_folder)])
+            elif system == "Darwin":  # macOS
+                subprocess.run(['open', str(data_folder)])
+            else:  # Linux
+                subprocess.run(['xdg-open', str(data_folder)])
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open folder:\n{e}")
+
+    def _verify_session_transactions(self):
+        """Verify all session transactions against QuickBooks."""
+        from qb.connection_check import is_quickbooks_available
+
+        # Check if session is loaded
+        state = self.store.get_state()
+        total_txns = len(state.invoices) + len(state.sales_receipts) + len(state.statement_charges)
+        if total_txns == 0:
+            messagebox.showwarning("No Session", "No session transactions to verify.\n\nPlease load a session first.")
+            return
+
+        # Check QB connection
+        is_available, error_msg = is_quickbooks_available()
+        if not is_available:
+            messagebox.showerror(
+                "QuickBooks Not Available",
+                f"{error_msg}\n\nPlease:\n1. Start QuickBooks Desktop\n2. Open a company file\n3. Try again"
+            )
+            return
+
+        # Launch verification worker
+        self._log_create(f"Starting verification of {total_txns} transaction(s)...")
+        from workers.session_worker import verify_session_worker
+        thread = threading.Thread(target=verify_session_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _auto_save_session(self):
+        """Silently auto-save session in background (no user interruption)."""
+        from workers.session_worker import save_session_worker
+        thread = threading.Thread(target=save_session_worker, args=(self, True), daemon=True)
+        thread.start()
+
+    def _archive_closed_transactions(self):
+        """Mark closed/paid transactions as archived (wrapper - launches background thread)."""
+        from workers.cleanup_worker import archive_closed_worker
+        thread = threading.Thread(target=archive_closed_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _archive_all_transactions(self):
+        """Mark all transactions as archived (wrapper - launches background thread)."""
+        from workers.cleanup_worker import archive_all_worker
+        thread = threading.Thread(target=archive_all_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _delete_archived_from_qb(self):
+        """Delete archived transactions from QuickBooks (wrapper - launches background thread)."""
+        from workers.cleanup_worker import delete_archived_from_qb_worker
+        thread = threading.Thread(target=delete_archived_from_qb_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _remove_archived_from_session(self):
+        """Remove archived transactions from session (wrapper - launches background thread)."""
+        from workers.cleanup_worker import remove_archived_worker
+        thread = threading.Thread(target=remove_archived_worker, args=(self,), daemon=True)
+        thread.start()
+
+    def _check_and_load_session(self):
+        """Check settings and auto-load session if enabled."""
+        from persistence import SessionManager
+
+        # Check if session file exists
+        if not SessionManager.session_exists():
+            self._log_create("No previous session found")
+            return
+
+        # Get session info
+        info = SessionManager.get_session_info()
+        if not info:
+            return
+
+        # Check if auto-load is enabled
+        persistence_settings = AppConfig.get_persistence_settings()
+        auto_load = persistence_settings.get('auto_load', False)
+
+        if auto_load:
+            # Auto-load session (without verification)
+            self._log_create(f"Auto-loading previous session ({info['total_items']} items)...")
+
+            from workers.session_worker import load_session_worker
+            thread = threading.Thread(target=load_session_worker, args=(self, False), daemon=True)
+            thread.start()
+
+            # Prompt user to manually verify if desired
+            self._log_create("Session loaded. Click 'Verify Session Transactions' in Settings to check for changes.")
+        else:
+            # Just show session info
+            self._log_create(f"Previous session available ({info['total_items']} items) - Click 'Load Previous Session' to restore")
+            if hasattr(self, 'session_status_label'):
+                self.session_status_label.config(
+                    text=f"Session available ({info['total_items']} items) - Not auto-loaded"
+                )
+
+    def _on_state_change(self):
+        """Called when store state changes."""
+        state = self.store.get_state()
+        status_text = (f"Customers: {len(state.customers)} | "
+                      f"Invoices: {len(state.invoices)} | "
+                      f"Sales Receipts: {len(state.sales_receipts)} | "
+                      f"Statement Charges: {len(state.statement_charges)}")
+        if state.monitoring_active:
+            status_text += " | MONITORING ACTIVE"
+        self.status_bar.config(text=status_text)
+
+        # Update monitor tab transaction list
+        from workers.monitor_worker import update_invoice_tree
+        update_invoice_tree(self)
+
+### MARK: Main
+
+def main():
+    """Main entry point."""
+    # Check for existing instance
+    from trayapp import check_and_acquire_lock
+    if not check_and_acquire_lock():
+        return  # Exit if another instance is running
+
+    root = tk.Tk()
+    app = QBDTestToolApp(root)
+    root.mainloop()
+
+
+if __name__ == '__main__':
+    # Required for multiprocessing with PyInstaller
+    multiprocessing.freeze_support()
+    main()

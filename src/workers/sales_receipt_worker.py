@@ -1,0 +1,184 @@
+"""
+Sales Receipt creation worker for QuickBooks Desktop Test Tool.
+
+Background worker for creating batch sales receipts in QuickBooks.
+"""
+
+import json
+from datetime import datetime
+from tkinter import messagebox
+from qb import QBIPCClient, disconnect_qb
+from qb.qbfc_connection import QBFCConnectionError
+from mock_generation import SalesReceiptGenerator
+from store.state import SalesReceiptRecord
+from store.actions import add_sales_receipt
+from app_logging import LOG_NORMAL, LOG_VERBOSE, LOG_DEBUG
+from app_logging.logging_config import should_log
+from config import AppConfig
+
+
+def _format_receipt_debug(receipt_data: dict, result: dict) -> tuple:
+    """Format sales receipt operation debug info for logging."""
+    # Request info: show ALL data being sent
+    request_str = json.dumps(receipt_data, indent=2, default=str)
+
+    # Response info
+    if result.get('success'):
+        data = result.get('data', {})
+        total = data.get('total_amount') or data.get('balance_remaining') or 0
+        response_str = f"txn_id={data.get('txn_id')}, ref_number={data.get('ref_number')}, total=${float(total):.2f}"
+    else:
+        response_str = f"ERROR: {result.get('error', 'Unknown error')}"
+
+    return request_str, response_str
+
+
+def create_sales_receipt_worker(app, customer: dict, num_receipts: int,
+                                 line_items_min: int, line_items_max: int,
+                                 amount_min: float, amount_max: float, date_range: str, items: list,
+                                 class_ref: str = None):
+    """Worker function to create batch sales receipts in background."""
+    successful_count = 0
+    failed_count = 0
+
+    try:
+        import random
+        from datetime import timedelta
+
+        # Calculate date range based on selection
+        today = datetime.now()
+        if date_range == 'Today Only':
+            days_back = 0
+        elif date_range == 'Last 7 Days':
+            days_back = 7
+        elif date_range == 'Last 30 Days':
+            days_back = 30
+        else:
+            days_back = 0  # Default to today
+
+        app.root.after(0, lambda: app._log_create(f"Starting batch creation of {num_receipts} sales receipt(s) for {customer['name']} ({date_range})..."))
+
+        # Create QB client once for entire batch
+        qb = QBIPCClient()
+
+        # Create multiple sales receipts
+        for i in range(num_receipts):
+            try:
+                # Randomize parameters within specified ranges
+                num_lines = random.randint(line_items_min, line_items_max)
+                amount = round(random.uniform(amount_min, amount_max), 2)
+
+                # Randomize transaction date within range
+                if days_back > 0:
+                    random_days = random.randint(0, days_back)
+                    txn_date = (today - timedelta(days=random_days)).strftime('%Y-%m-%d')
+                else:
+                    txn_date = today.strftime('%Y-%m-%d')
+
+                # Filter to only item types valid for line items
+                # (SalesTax, Subtotal, Discount, etc. cannot be used as regular line items)
+                VALID_LINE_ITEM_TYPES = {'Service', 'Inventory', 'NonInventory', 'OtherCharge'}
+                valid_items = [item for item in items if item.get('type') in VALID_LINE_ITEM_TYPES]
+
+                # Select random items for sales receipt line items
+                selected_items = random.sample(valid_items, min(num_lines, len(valid_items)))
+                item_refs = [item['list_id'] for item in selected_items]
+
+                # Generate sales receipt data
+                receipt_data = SalesReceiptGenerator.generate_sales_receipt_data(
+                    customer_ref=customer['list_id'],
+                    num_line_items=num_lines,
+                    total_amount=amount,
+                    item_refs=item_refs,
+                    txn_date=txn_date,
+                    class_ref=class_ref
+                )
+
+                # Log current progress
+                receipt_num = i + 1
+                app.root.after(0, lambda n=receipt_num, ref=receipt_data['ref_number']:
+                              app._log_create(f"[{n}/{num_receipts}] Creating sales receipt Ref#: {ref}, Amount: ${amount:.2f}, Lines: {num_lines}", LOG_VERBOSE))
+
+                # Send to QuickBooks via QBFC
+                parser_result = qb.execute_operation('add_sales_receipt', {'sales_receipt_data': receipt_data})
+
+                # DEBUG: Log request and response (only if DEBUG is enabled)
+                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                    req_str, resp_str = _format_receipt_debug(receipt_data, parser_result)
+                    app.root.after(0, lambda n=receipt_num, r=req_str:
+                                  app._log_create(f"  [DEBUG {n}] Request: {r}", LOG_DEBUG))
+                    app.root.after(0, lambda n=receipt_num, r=resp_str:
+                                  app._log_create(f"  [DEBUG {n}] Response: {r}", LOG_DEBUG))
+
+                if parser_result['success']:
+                    receipt_info = parser_result['data']
+
+                    # Create sales receipt record
+                    # Safely extract amounts (handle None values)
+                    balance_remaining = receipt_info.get('balance_remaining')
+                    total_amount_str = receipt_info.get('total_amount')
+
+                    # Convert to float, defaulting to the generated amount if not in response
+                    if balance_remaining:
+                        balance = float(balance_remaining)
+                    else:
+                        balance = amount  # Default to generated amount
+
+                    if total_amount_str:
+                        total_amt = float(total_amount_str)
+                    else:
+                        total_amt = amount  # Default to generated amount
+
+                    # Determine status - if no balance_remaining, assume open (unpaid)
+                    status = 'open' if balance > 0 else 'closed'
+
+                    receipt_record = SalesReceiptRecord(
+                        txn_id=receipt_info['txn_id'],
+                        ref_number=receipt_info['ref_number'],
+                        customer_name=customer.get('full_name', customer['name']),
+                        amount=total_amt,
+                        status=status,
+                        created_at=datetime.now()
+                    )
+
+                    app.store.dispatch(add_sales_receipt(receipt_record))
+                    app.root.after(0, lambda n=receipt_num, ref=receipt_info['ref_number'], tid=receipt_info['txn_id']:
+                                  app._log_create(f"  ✓ [{n}/{num_receipts}] Sales receipt created: {ref} (ID: {tid})", LOG_VERBOSE))
+                    successful_count += 1
+
+                else:
+                    error_msg = parser_result.get('error', 'Unknown error')
+                    app.root.after(0, lambda n=receipt_num, msg=error_msg:
+                                  app._log_create(f"  ✗ [{n}/{num_receipts}] Error: {msg}"))
+                    failed_count += 1
+
+            except Exception as e:
+                error_str = str(e)
+                receipt_num = i + 1
+                app.root.after(0, lambda n=receipt_num, msg=error_str:
+                              app._log_create(f"  ✗ [{n}/{num_receipts}] Error: {msg}"))
+                failed_count += 1
+
+        # Final summary
+        summary = f"Batch complete: {successful_count} succeeded, {failed_count} failed out of {num_receipts} total"
+        app.root.after(0, lambda s=summary: app._log_create(f"\n{s}"))
+
+        if failed_count > 0 and successful_count > 0:
+            app.root.after(0, lambda: messagebox.showwarning("Batch Complete", summary))
+        elif failed_count > 0:
+            app.root.after(0, lambda: messagebox.showerror("Batch Failed", summary))
+        else:
+            app.root.after(0, lambda: messagebox.showinfo("Batch Complete", summary))
+
+    except Exception as e:
+        error_str = str(e)
+        app.root.after(0, lambda: app._log_create(f"✗ Batch error: {error_str}"))
+        app.root.after(0, lambda: messagebox.showerror("Error", error_str))
+    finally:
+        # Disconnect from QuickBooks after batch operation completes
+        disconnect_qb()
+        # Auto-save session after creating sales receipts
+        app.root.after(0, lambda: app._auto_save_session())
+        # Re-enable button and update status
+        app.root.after(0, lambda: app.create_transaction_btn.config(state='normal'))
+        app.root.after(0, lambda: app.status_bar.config(text="Ready"))
