@@ -8,6 +8,8 @@ import threading
 from datetime import datetime
 from tkinter import messagebox
 from qb import QBIPCClient
+from store.actions import update_invoice, update_statement_charge
+from workers.monitor_worker import update_invoice_tree, verify_transaction
 
 
 def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = None):
@@ -39,13 +41,15 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
 
     # Collect transactions matching selection
     # Include 'partial' status for invoices/charges (can receive additional payments)
+    # Convert ref_numbers to strings for comparison (QB auto-numbering returns int, treeview returns str)
+    selected_refs_str = [str(r) for r in selected_refs]
     open_invoices = [inv for inv in state.invoices
-                    if inv.status in ('open', 'partial') and inv.ref_number in selected_refs]
+                    if inv.status in ('open', 'partial') and str(inv.ref_number) in selected_refs_str]
     open_charges = [chg for chg in state.statement_charges
-                   if chg.status in ('open', 'partial') and chg.ref_number in selected_refs]
+                   if chg.status in ('open', 'partial') and str(chg.ref_number) in selected_refs_str]
     # Sales receipts are already paid - we just update memo/payment method if selected
     selected_receipts = [sr for sr in state.sales_receipts
-                        if sr.ref_number in selected_refs]
+                        if str(sr.ref_number) in selected_refs_str]
 
     total_count = len(open_invoices) + len(open_charges) + len(selected_receipts)
     if total_count == 0:
@@ -92,6 +96,14 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
                     error_count += 1
                     continue
 
+                # Verify invoice exists in QB before attempting payment
+                verify_result = qb.execute_operation('query_invoice', {'txn_id': invoice.txn_id})
+                if not verify_result.get('success') or not verify_result.get('data', {}).get('invoices'):
+                    app.root.after(0, lambda ref=invoice.ref_number, tid=invoice.txn_id:
+                        app._log_monitor(f"  [DEV] Skip {ref}: transaction {tid} not found in QB (may have been deleted)"))
+                    error_count += 1
+                    continue
+
                 # Calculate payment amount (round to 2 decimals for QBFC)
                 payment_amount = round(invoice.amount * pay_percentage, 2)
 
@@ -100,8 +112,8 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
 
                 # Step 1: Update transaction memo if checkbox is enabled
                 if post_to_transaction:
-                    # Query invoice to get current edit_sequence
-                    query_result = qb.execute_operation('query_invoice', {'txn_id': invoice.txn_id})
+                    # Use the already-queried result for edit_sequence
+                    query_result = verify_result
                     if query_result.get('success') and query_result.get('data', {}).get('invoices'):
                         qb_invoice = query_result['data']['invoices'][0]
                         edit_seq = qb_invoice.get('edit_sequence')
@@ -151,6 +163,18 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
                     app.root.after(0, lambda ref=invoice.ref_number, amt=payment_amount, pmm=pmt_memo_msg:
                         app._log_monitor(f"  [DEV] Paid {ref}: ${amt:.2f}{pmm}"))
                     success_count += 1
+
+                    # Re-query invoice to get updated data with linked transactions for verification
+                    updated_result = qb.execute_operation('query_invoice', {'txn_id': invoice.txn_id})
+                    if updated_result.get('success') and updated_result.get('data', {}).get('invoices'):
+                        qb_invoice = updated_result['data']['invoices'][0]
+                        # Verify transaction immediately (don't wait for monitor)
+                        verify_transaction(app, invoice, qb_invoice, 'Invoice')
+
+                    # Update invoice status in state to prevent re-selection
+                    new_status = 'closed' if pay_percentage >= 1.0 else 'partial'
+                    invoice.status = new_status
+                    app.store.dispatch(update_invoice(invoice))
                 else:
                     error_msg = result.get('error', 'Unknown error')
                     app.root.after(0, lambda ref=invoice.ref_number, err=error_msg:
@@ -170,6 +194,15 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
                 if not customer_id:
                     app.root.after(0, lambda ref=charge.ref_number:
                         app._log_monitor(f"  [DEV] Skip {ref}: customer not found"))
+                    error_count += 1
+                    continue
+
+                # Verify charge exists in QB before attempting payment
+                # Note: ChargeQuery returns all charges, we filter by txn_id
+                verify_result = qb.execute_operation('query_charge', {'txn_id': charge.txn_id})
+                if not verify_result.get('success') or not verify_result.get('data', {}).get('charges'):
+                    app.root.after(0, lambda ref=charge.ref_number, tid=charge.txn_id:
+                        app._log_monitor(f"  [DEV] Skip {ref}: transaction {tid} not found in QB (may have been deleted)"))
                     error_count += 1
                     continue
 
@@ -208,6 +241,18 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
                     app.root.after(0, lambda ref=charge.ref_number, amt=payment_amount, pmm=pmt_memo_msg:
                         app._log_monitor(f"  [DEV] Paid {ref}: ${amt:.2f}{pmm}"))
                     success_count += 1
+
+                    # Re-query charge to get updated data with linked transactions for verification
+                    updated_result = qb.execute_operation('query_charge', {'txn_id': charge.txn_id})
+                    if updated_result.get('success') and updated_result.get('data', {}).get('charges'):
+                        qb_charge = updated_result['data']['charges'][0]
+                        # Verify transaction immediately (don't wait for monitor)
+                        verify_transaction(app, charge, qb_charge, 'Statement Charge')
+
+                    # Update charge status in state to prevent re-selection
+                    new_status = 'closed' if pay_percentage >= 1.0 else 'partial'
+                    charge.status = new_status
+                    app.store.dispatch(update_statement_charge(charge))
                 else:
                     error_msg = result.get('error', 'Unknown error')
                     app.root.after(0, lambda ref=charge.ref_number, err=error_msg:
@@ -231,6 +276,17 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
                     qb_receipt = query_result['data']['sales_receipts'][0]
                     edit_seq = qb_receipt.get('edit_sequence')
                     current_payment_method = qb_receipt.get('payment_method', {}).get('full_name')
+                    current_memo = qb_receipt.get('memo', '') or ''
+
+                    # Check if already processed (memo starts with "Paid")
+                    already_processed = current_memo.startswith('Paid ')
+
+                    if already_processed and current_payment_method:
+                        # Already fully processed - skip
+                        app.root.after(0, lambda ref=receipt.ref_number:
+                            app._log_monitor(f"  [DEV] Skip {ref}: already processed (has memo and payment method)"))
+                        success_count += 1
+                        continue
 
                     if edit_seq:
                         # Build modification data
@@ -239,8 +295,8 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
                             'edit_sequence': edit_seq
                         }
 
-                        # Add memo if checkbox is enabled
-                        if post_to_transaction:
+                        # Add memo if checkbox is enabled AND not already set
+                        if post_to_transaction and not already_processed:
                             mod_data['memo'] = memo
 
                         # Set payment method if not already set (simulates card payment)
@@ -261,6 +317,13 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
                                 app.root.after(0, lambda ref=receipt.ref_number, c=', '.join(changes):
                                     app._log_monitor(f"  [DEV] Updated sales receipt {ref}: {c}"))
                                 success_count += 1
+
+                                # Re-query sales receipt to get updated data for verification
+                                updated_result = qb.execute_operation('query_sales_receipt', {'txn_id': receipt.txn_id})
+                                if updated_result.get('success') and updated_result.get('data', {}).get('sales_receipts'):
+                                    qb_sr = updated_result['data']['sales_receipts'][0]
+                                    # Verify transaction immediately (don't wait for monitor)
+                                    verify_transaction(app, receipt, qb_sr, 'Sales Receipt')
                             else:
                                 app.root.after(0, lambda ref=receipt.ref_number, err=mod_result.get('error'):
                                     app._log_monitor(f"  [DEV] Warning: sales receipt update failed for {ref}: {err}"))
@@ -275,8 +338,8 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
                             app._log_monitor(f"  [DEV] Warning: no edit_sequence for {ref}"))
                         error_count += 1
                 else:
-                    app.root.after(0, lambda ref=receipt.ref_number:
-                        app._log_monitor(f"  [DEV] Warning: could not query {ref}"))
+                    app.root.after(0, lambda ref=receipt.ref_number, tid=receipt.txn_id:
+                        app._log_monitor(f"  [DEV] Skip {ref}: transaction {tid} not found in QB (may have been deleted)"))
                     error_count += 1
 
             except Exception as e:
@@ -287,6 +350,9 @@ def apply_test_payments(app, pay_percentage: float = 1.0, selected_refs: list = 
         # Summary
         app.root.after(0, lambda s=success_count, e=error_count:
             app._log_monitor(f"[DEV] Payment complete: {s} success, {e} errors"))
+
+        # Refresh tree to show updated statuses (works even when monitoring is disabled)
+        app.root.after(0, lambda: update_invoice_tree(app))
 
     thread = threading.Thread(target=payment_worker, daemon=True)
     thread.start()

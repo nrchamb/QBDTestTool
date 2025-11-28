@@ -4,6 +4,77 @@ All notable changes to QBDTestTool-Verosa will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [v1.5.0] - 2025-11-28
+
+### Changed
+
+#### Complete Migration from QBXML to QBFC 13.0
+- **New QBFC COM API integration**: Replaced all QBXML string-based operations with QBFC 13.0 COM object model
+  - Direct COM object manipulation instead of XML string building/parsing
+  - Type-safe property access through QBFC interfaces
+  - Automatic type conversion for dates, amounts, and enumerations
+- **QBFCRequestBuilder**: New request builder class for constructing QBFC requests
+  - Supports all transaction types: Invoice, SalesReceipt, Charge, ReceivePayment
+  - Query operations with filters and linked transaction support
+  - Modification operations for updating memos, payment methods, etc.
+- **QBFCResponseMapper**: New response mapper for converting QBFC COM objects to Python dicts
+  - Maintains backward-compatible dictionary structure for minimal code changes
+  - Handles pywintypes.datetime conversion for pickle compatibility
+  - Transaction type enum mapping (integer → string name)
+
+### Fixed
+
+#### Payment Memo Verification
+- **QBFC transaction type enum mapping**: Fixed payment memo verification failing silently
+  - QBFC returns `TxnType` as integer enum (e.g., `20` for ReceivePayment)
+  - Verification logic expected string comparison (`'ReceivePayment'`)
+  - Added `QBFC_TXN_TYPE_MAP` constant and `_map_txn_type()` method
+  - Applied to Invoice, SalesReceipt, and Charge linked transaction parsing
+
+#### ClassRef Assignment
+- **Transaction-level class assignment**: Fixed ClassRef being set on line items instead of transaction
+  - Invoice, SalesReceipt, and Charge now set ClassRef at transaction level
+  - Matches QuickBooks behavior for class tracking
+
+#### Immediate Verification
+- **Post-payment verification**: Verification now triggers immediately after payment application
+  - Previously required waiting for monitor poll cycle
+  - Dev payment tool now calls `verify_transaction()` directly after payment
+
+### Technical Details
+
+#### QBFC Architecture
+```
+QBIPCClient
+    └── QBFCRequestBuilder (builds COM requests)
+            └── SessionManager.DoRequests()
+                    └── QBFCResponseMapper (maps COM responses to dicts)
+```
+
+#### Transaction Type Mapping
+```python
+QBFC_TXN_TYPE_MAP = {
+    13: 'Invoice',
+    20: 'ReceivePayment',
+    22: 'SalesReceipt',
+    5: 'Charge',
+    # ... all 27 transaction types
+}
+```
+
+#### Files Added/Modified
+- `src/qb/qbfc_request_builder.py`: New QBFC request builder (all operations)
+- `src/qb/qbfc_response_mapper.py`: New QBFC response mapper with enum mapping
+- `src/qb/ipc_client.py`: Updated to use QBFC instead of QBXML
+- `src/actions/payment_actions.py`: Added immediate verification calls
+- `src/workers/monitor_worker.py`: Updated for QBFC response format
+
+### Dependencies
+- Added: QBFC 13.0 (COM component, included with QuickBooks Desktop)
+- Unchanged: pywin32 (for COM dispatch)
+
+---
+
 ## [v1.3.0] - 2025-11-25
 
 ### Added

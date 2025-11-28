@@ -22,7 +22,8 @@ class InvoiceGenerator:
         txn_date: str = None,
         po_prefix: str = None,
         terms_ref: str = None,
-        class_ref: str = None
+        class_ref: str = None,
+        use_auto_numbering: bool = True
     ) -> Dict[str, Any]:
         """
         Generate invoice data.
@@ -36,6 +37,7 @@ class InvoiceGenerator:
             po_prefix: PO number prefix (e.g., "PO-") - will generate random 5-digit number if provided
             terms_ref: Terms ListID (optional)
             class_ref: Class ListID (optional)
+            use_auto_numbering: If True, let QB auto-assign ref_number (default). If False, generate random.
 
         Returns:
             Dict suitable for QBXMLBuilder.build_invoice_add()
@@ -81,10 +83,13 @@ class InvoiceGenerator:
         invoice_data = {
             'customer_ref': customer_ref,
             'txn_date': txn_date if txn_date else datetime.now().strftime('%Y-%m-%d'),
-            'ref_number': f"INV-{random.randint(10000, 99999)}",
             'line_items': line_items,
             'memo': f"Test invoice - {fake.sentence()}"
         }
+
+        # Only add ref_number if not using auto-numbering (let QB assign sequential numbers)
+        if not use_auto_numbering:
+            invoice_data['ref_number'] = f"INV-{random.randint(10000, 99999)}"
 
         # Add optional PO number
         if po_prefix:
@@ -94,7 +99,7 @@ class InvoiceGenerator:
         if terms_ref:
             invoice_data['terms_ref'] = terms_ref
 
-        # Add optional class reference
+        # Add optional class reference (transaction level)
         if class_ref:
             invoice_data['class_ref'] = class_ref
 

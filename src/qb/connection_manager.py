@@ -176,7 +176,7 @@ class QBConnectionManager:
                 case 'add_charge':
                     response_set = QBFCOperations.add_charge(session_manager, params['charge_data'])
                 case 'query_charge':
-                    response_set = QBFCOperations.query_charge(session_manager, **params)
+                    response_set = QBFCOperations.query_charge(session_manager)
                 case 'modify_charge':
                     response_set = QBFCOperations.modify_charge(session_manager, params['charge_mod_data'])
                 case 'query_account':
@@ -197,6 +197,20 @@ class QBConnectionManager:
                     response_set = QBFCOperations.query_receive_payment(session_manager, params.get('txn_id'))
                 case 'modify_sales_receipt':
                     response_set = QBFCOperations.modify_sales_receipt(session_manager, params['sales_receipt_mod_data'])
+                # Batch query operations
+                case 'query_invoices_batch':
+                    response_set = QBFCOperations.query_invoices_batch(session_manager, params['txn_ids'])
+                case 'query_sales_receipts_batch':
+                    response_set = QBFCOperations.query_sales_receipts_batch(session_manager, params['txn_ids'])
+                case 'query_receive_payments_batch':
+                    response_set = QBFCOperations.query_receive_payments_batch(session_manager, params['txn_ids'])
+                # Batch add operations
+                case 'add_invoices_batch':
+                    response_set = QBFCOperations.add_invoices_batch(session_manager, params['invoice_data_list'])
+                case 'add_sales_receipts_batch':
+                    response_set = QBFCOperations.add_sales_receipts_batch(session_manager, params['sales_receipt_data_list'])
+                case 'add_charges_batch':
+                    response_set = QBFCOperations.add_charges_batch(session_manager, params['charge_data_list'])
                 case _:
                     raise Exception(f"Unknown operation: {operation}")
 

@@ -123,6 +123,7 @@ def start_manager():
     _manager_process = Process(
         target=run_connection_manager,
         args=(_request_queue, _response_queue),
+        name='qbdtt-daemon',
         daemon=False  # Not daemon so it can cleanup properly
     )
     _manager_process.start()

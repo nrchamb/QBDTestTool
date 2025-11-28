@@ -32,7 +32,7 @@ def _to_pywintypes_time(date_value):
         return pywintypes.Time(date_value)
     if isinstance(date_value, str):
         # Try common date formats
-        for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%Y-%m-%dT%H:%M:%S']:
+        for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%m/%d/%Y', '%Y-%m-%dT%H:%M:%S']:
             try:
                 dt = datetime.strptime(date_value, fmt)
                 return pywintypes.Time(dt)
@@ -199,7 +199,7 @@ class QBFCOperations:
 
                 # Class
                 if 'class_ref' in line:
-                    line_add.ClassRef.ListID.SetValue(line['class_ref'])
+                    line_add.ClassRef.FullName.SetValue(line['class_ref'])
 
         # Execute request
         response_set = session_manager.DoRequests(msg_set_rq)
@@ -217,11 +217,14 @@ class QBFCOperations:
             session_manager: QBFC SessionManager COM object
             txn_id: Optional transaction ID
             ref_number: Optional reference number
-            from_modified_date: Optional modified date filter
+            from_modified_date: Optional - query invoices modified since this datetime
             date_range: Optional tuple of (from_date, to_date)
 
         Returns:
             QBFC response set object
+
+        Note:
+            For batch queries by TxnID, use query_invoices_batch() instead.
         """
         msg_set_rq = session_manager.CreateMsgSetRequest("US", 13, 0)
         invoice_query_rq = msg_set_rq.AppendInvoiceQueryRq()
@@ -234,15 +237,18 @@ class QBFCOperations:
         elif ref_number:
             invoice_query_rq.ORInvoiceQuery.RefNumberFilter.ORRefNumberFilter.RefNumberList.Add(ref_number)
 
-        # Filter by modified date
+        # Filter by modified date (invoices changed since this datetime)
+        # Note: QBFC SetValue for dates requires TWO parameters: (date, useClientTimeZone)
         elif from_modified_date:
-            invoice_query_rq.ORInvoiceQuery.InvoiceFilter.ORDateRangeFilter.ModifiedDateRangeFilter.FromModifiedDate.SetValue(_to_pywintypes_time(from_modified_date))
+            date_filter = invoice_query_rq.ORInvoiceQuery.InvoiceFilter.ORDateRangeFilter.ModifiedDateRangeFilter
+            date_filter.FromModifiedDate.SetValue(_to_pywintypes_time(from_modified_date), False)
 
-        # Filter by date range
+        # Filter by transaction date range
         elif date_range:
             from_date, to_date = date_range
-            invoice_query_rq.ORInvoiceQuery.InvoiceFilter.ORDateRangeFilter.TxnDateRangeFilter.ORTxnDateRangeFilter.TxnDateFilter.FromTxnDate.SetValue(_to_pywintypes_time(from_date))
-            invoice_query_rq.ORInvoiceQuery.InvoiceFilter.ORDateRangeFilter.TxnDateRangeFilter.ORTxnDateRangeFilter.TxnDateFilter.ToTxnDate.SetValue(_to_pywintypes_time(to_date))
+            txn_filter = invoice_query_rq.ORInvoiceQuery.InvoiceFilter.ORDateRangeFilter.TxnDateRangeFilter.ORTxnDateRangeFilter.TxnDateFilter
+            txn_filter.FromTxnDate.SetValue(_to_pywintypes_time(from_date), False)
+            txn_filter.ToTxnDate.SetValue(_to_pywintypes_time(to_date), False)
 
         # Include line items and linked transactions
         invoice_query_rq.IncludeLineItems.SetValue(True)
@@ -343,7 +349,7 @@ class QBFCOperations:
 
                 # Class
                 if 'class_ref' in line:
-                    line_add.ClassRef.ListID.SetValue(line['class_ref'])
+                    line_add.ClassRef.FullName.SetValue(line['class_ref'])
 
         # Execute request
         response_set = session_manager.DoRequests(msg_set_rq)
@@ -361,11 +367,14 @@ class QBFCOperations:
             session_manager: QBFC SessionManager COM object
             txn_id: Optional transaction ID
             ref_number: Optional reference number
-            from_modified_date: Optional modified date filter
+            from_modified_date: Optional - query sales receipts modified since this datetime
             date_range: Optional tuple of (from_date, to_date)
 
         Returns:
             QBFC response set object
+
+        Note:
+            For batch queries by TxnID, use query_sales_receipts_batch() instead.
         """
         msg_set_rq = session_manager.CreateMsgSetRequest("US", 13, 0)
         sales_receipt_query_rq = msg_set_rq.AppendSalesReceiptQueryRq()
@@ -378,15 +387,18 @@ class QBFCOperations:
         elif ref_number:
             sales_receipt_query_rq.ORTxnQuery.RefNumberFilter.ORRefNumberFilter.RefNumberList.Add(ref_number)
 
-        # Filter by modified date
+        # Filter by modified date (sales receipts changed since this datetime)
+        # Note: QBFC SetValue for dates requires TWO parameters: (date, useClientTimeZone)
         elif from_modified_date:
-            sales_receipt_query_rq.ORTxnQuery.TxnFilter.ORDateRangeFilter.ModifiedDateRangeFilter.FromModifiedDate.SetValue(_to_pywintypes_time(from_modified_date))
+            date_filter = sales_receipt_query_rq.ORTxnQuery.TxnFilter.ORDateRangeFilter.ModifiedDateRangeFilter
+            date_filter.FromModifiedDate.SetValue(_to_pywintypes_time(from_modified_date), False)
 
-        # Filter by date range
+        # Filter by transaction date range
         elif date_range:
             from_date, to_date = date_range
-            sales_receipt_query_rq.ORTxnQuery.TxnFilter.ORDateRangeFilter.TxnDateRangeFilter.ORTxnDateRangeFilter.TxnDateFilter.FromTxnDate.SetValue(_to_pywintypes_time(from_date))
-            sales_receipt_query_rq.ORTxnQuery.TxnFilter.ORDateRangeFilter.TxnDateRangeFilter.ORTxnDateRangeFilter.TxnDateFilter.ToTxnDate.SetValue(_to_pywintypes_time(to_date))
+            txn_filter = sales_receipt_query_rq.ORTxnQuery.TxnFilter.ORDateRangeFilter.TxnDateRangeFilter.ORTxnDateRangeFilter.TxnDateFilter
+            txn_filter.FromTxnDate.SetValue(_to_pywintypes_time(from_date), False)
+            txn_filter.ToTxnDate.SetValue(_to_pywintypes_time(to_date), False)
 
         # Include line items
         # Note: SalesReceiptQueryRq doesn't have IncludeLinkedTxns (unlike InvoiceQueryRq)
@@ -478,36 +490,29 @@ class QBFCOperations:
 
         # Optional: Class
         if 'class_ref' in charge_data:
-            charge_add_rq.ClassRef.ListID.SetValue(charge_data['class_ref'])
+            charge_add_rq.ClassRef.FullName.SetValue(charge_data['class_ref'])
 
         # Execute request
         response_set = session_manager.DoRequests(msg_set_rq)
         return response_set
 
     @staticmethod
-    def query_charge(session_manager, txn_id: Optional[str] = None,
-                    ref_number: Optional[str] = None,
-                    from_modified_date: Optional[str] = None,
-                    date_range: Optional[tuple] = None):
+    def query_charge(session_manager):
         """
-        Query statement charges using QBFC.
+        Query all statement charges using QBFC.
 
         Args:
             session_manager: QBFC SessionManager COM object
-            txn_id: Optional transaction ID
-            ref_number: Optional reference number
-            from_modified_date: Optional modified date filter
-            date_range: Optional tuple of (from_date, to_date)
 
         Returns:
             QBFC response set object
+
+        Note:
+            ChargeQueryRq doesn't support TxnID, RefNumber, or date filtering in QBFC.
+            All charges are returned and must be filtered in Python.
         """
         msg_set_rq = session_manager.CreateMsgSetRequest("US", 13, 0)
         charge_query_rq = msg_set_rq.AppendChargeQueryRq()
-
-        # NOTE: ChargeQueryRq doesn't support TxnID or RefNumber filtering in QBFC
-        # We query without filters and filter in Python after getting results
-        # The txn_id parameter is passed through to the response mapper for filtering
 
         # Include linked transactions (payments)
         charge_query_rq.IncludeLinkedTxns.SetValue(True)
@@ -759,5 +764,281 @@ class QBFCOperations:
             query_rq.ORTxnQuery.TxnIDList.Add(txn_id)
 
         # Execute request
+        response_set = session_manager.DoRequests(msg_set_rq)
+        return response_set
+
+    # =========================================================================
+    # BATCH OPERATIONS - Query multiple items in a single request
+    # =========================================================================
+
+    @staticmethod
+    def query_invoices_batch(session_manager, txn_ids: list):
+        """
+        Query multiple invoices in a single request.
+
+        Args:
+            session_manager: QBFC SessionManager COM object
+            txn_ids: List of transaction IDs to query
+
+        Returns:
+            QBFC response set object
+        """
+        msg_set_rq = session_manager.CreateMsgSetRequest("US", 13, 0)
+        invoice_query_rq = msg_set_rq.AppendInvoiceQueryRq()
+
+        # Add all TxnIDs to the query
+        for txn_id in txn_ids:
+            invoice_query_rq.ORInvoiceQuery.TxnIDList.Add(txn_id)
+
+        # Include line items and linked transactions
+        invoice_query_rq.IncludeLineItems.SetValue(True)
+        invoice_query_rq.IncludeLinkedTxns.SetValue(True)
+
+        # Execute request
+        response_set = session_manager.DoRequests(msg_set_rq)
+        return response_set
+
+    @staticmethod
+    def query_sales_receipts_batch(session_manager, txn_ids: list):
+        """
+        Query multiple sales receipts in a single request.
+
+        Args:
+            session_manager: QBFC SessionManager COM object
+            txn_ids: List of transaction IDs to query
+
+        Returns:
+            QBFC response set object
+        """
+        msg_set_rq = session_manager.CreateMsgSetRequest("US", 13, 0)
+        sales_receipt_query_rq = msg_set_rq.AppendSalesReceiptQueryRq()
+
+        # Add all TxnIDs to the query
+        for txn_id in txn_ids:
+            sales_receipt_query_rq.ORTxnQuery.TxnIDList.Add(txn_id)
+
+        # Include line items
+        sales_receipt_query_rq.IncludeLineItems.SetValue(True)
+
+        # Execute request
+        response_set = session_manager.DoRequests(msg_set_rq)
+        return response_set
+
+    @staticmethod
+    def query_receive_payments_batch(session_manager, txn_ids: list):
+        """
+        Query multiple ReceivePayment transactions in a single request.
+
+        Args:
+            session_manager: QBFC SessionManager COM object
+            txn_ids: List of transaction IDs to query
+
+        Returns:
+            QBFC response set object
+        """
+        msg_set_rq = session_manager.CreateMsgSetRequest("US", 13, 0)
+        query_rq = msg_set_rq.AppendReceivePaymentQueryRq()
+
+        # Add all TxnIDs to the query
+        for txn_id in txn_ids:
+            query_rq.ORTxnQuery.TxnIDList.Add(txn_id)
+
+        # Execute request
+        response_set = session_manager.DoRequests(msg_set_rq)
+        return response_set
+
+    # =========================================================================
+    # BATCH ADD OPERATIONS - Create multiple items in a single request
+    # =========================================================================
+
+    @staticmethod
+    def add_invoices_batch(session_manager, invoice_data_list: list):
+        """
+        Add multiple invoices in a single request.
+
+        Args:
+            session_manager: QBFC SessionManager COM object
+            invoice_data_list: List of invoice_data dicts (same format as add_invoice)
+
+        Returns:
+            QBFC response set object with one response per invoice
+        """
+        msg_set_rq = session_manager.CreateMsgSetRequest("US", 13, 0)
+        # Set OnError attribute for batch operations (1 = continue on error)
+        msg_set_rq.Attributes.OnError = 1
+
+        for invoice_data in invoice_data_list:
+            invoice_add_rq = msg_set_rq.AppendInvoiceAddRq()
+
+            # Required: Customer reference
+            invoice_add_rq.CustomerRef.ListID.SetValue(invoice_data['customer_ref'])
+
+            # Optional: Transaction date
+            if 'txn_date' in invoice_data:
+                invoice_add_rq.TxnDate.SetValue(_to_pywintypes_time(invoice_data['txn_date']))
+
+            # Optional: Reference number
+            if 'ref_number' in invoice_data:
+                invoice_add_rq.RefNumber.SetValue(invoice_data['ref_number'])
+
+            # Optional: Terms
+            if 'terms_ref' in invoice_data:
+                invoice_add_rq.TermsRef.ListID.SetValue(invoice_data['terms_ref'])
+
+            # Optional: Due date
+            if 'due_date' in invoice_data:
+                invoice_add_rq.DueDate.SetValue(_to_pywintypes_time(invoice_data['due_date']))
+
+            # Optional: Memo
+            if 'memo' in invoice_data:
+                invoice_add_rq.Memo.SetValue(invoice_data['memo'])
+
+            # Optional: Deposit to account
+            if 'deposit_to_account_ref' in invoice_data:
+                invoice_add_rq.DepositToAccountRef.ListID.SetValue(invoice_data['deposit_to_account_ref'])
+
+            # Optional: Class reference (transaction level)
+            if 'class_ref' in invoice_data:
+                invoice_add_rq.ClassRef.FullName.SetValue(invoice_data['class_ref'])
+
+            # Add line items
+            if 'line_items' in invoice_data:
+                for line in invoice_data['line_items']:
+                    line_add = invoice_add_rq.ORInvoiceLineAddList.Append().InvoiceLineAdd
+
+                    if 'item_ref' in line:
+                        line_add.ItemRef.ListID.SetValue(line['item_ref'])
+                    if 'desc' in line:
+                        line_add.Desc.SetValue(line['desc'])
+                    if 'quantity' in line:
+                        line_add.Quantity.SetValue(line['quantity'])
+                    if 'amount' in line:
+                        line_add.Amount.SetValue(float(line['amount']))
+                    elif 'rate' in line:
+                        try:
+                            line_add.ORRatePriceLevel.Rate.SetValue(float(line['rate']))
+                        except:
+                            qty = line.get('quantity', 1)
+                            line_add.Amount.SetValue(float(line['rate']) * float(qty))
+
+        # Execute all requests
+        response_set = session_manager.DoRequests(msg_set_rq)
+        return response_set
+
+    @staticmethod
+    def add_sales_receipts_batch(session_manager, sales_receipt_data_list: list):
+        """
+        Add multiple sales receipts in a single request.
+
+        Args:
+            session_manager: QBFC SessionManager COM object
+            sales_receipt_data_list: List of sales_receipt_data dicts
+
+        Returns:
+            QBFC response set object with one response per sales receipt
+        """
+        msg_set_rq = session_manager.CreateMsgSetRequest("US", 13, 0)
+        # Set OnError attribute for batch operations (1 = continue on error)
+        msg_set_rq.Attributes.OnError = 1
+
+        for sales_receipt_data in sales_receipt_data_list:
+            sales_receipt_add_rq = msg_set_rq.AppendSalesReceiptAddRq()
+
+            # Required: Customer reference
+            sales_receipt_add_rq.CustomerRef.ListID.SetValue(sales_receipt_data['customer_ref'])
+
+            # Optional: Transaction date
+            if 'txn_date' in sales_receipt_data:
+                sales_receipt_add_rq.TxnDate.SetValue(_to_pywintypes_time(sales_receipt_data['txn_date']))
+
+            # Optional: Reference number
+            if 'ref_number' in sales_receipt_data:
+                sales_receipt_add_rq.RefNumber.SetValue(sales_receipt_data['ref_number'])
+
+            # Optional: Memo
+            if 'memo' in sales_receipt_data:
+                sales_receipt_add_rq.Memo.SetValue(sales_receipt_data['memo'])
+
+            # Optional: Deposit to account
+            if 'deposit_to_account_ref' in sales_receipt_data:
+                sales_receipt_add_rq.DepositToAccountRef.ListID.SetValue(sales_receipt_data['deposit_to_account_ref'])
+
+            # Optional: Class reference (transaction level)
+            if 'class_ref' in sales_receipt_data:
+                sales_receipt_add_rq.ClassRef.FullName.SetValue(sales_receipt_data['class_ref'])
+
+            # Add line items
+            if 'line_items' in sales_receipt_data:
+                for line in sales_receipt_data['line_items']:
+                    line_add = sales_receipt_add_rq.ORSalesReceiptLineAddList.Append().SalesReceiptLineAdd
+
+                    if 'item_ref' in line:
+                        line_add.ItemRef.ListID.SetValue(line['item_ref'])
+                    if 'desc' in line:
+                        line_add.Desc.SetValue(line['desc'])
+                    if 'quantity' in line:
+                        line_add.Quantity.SetValue(line['quantity'])
+                    if 'rate' in line:
+                        line_add.ORRatePriceLevel.Rate.SetValue(float(line['rate']))
+
+        # Execute all requests
+        response_set = session_manager.DoRequests(msg_set_rq)
+        return response_set
+
+    @staticmethod
+    def add_charges_batch(session_manager, charge_data_list: list):
+        """
+        Add multiple statement charges in a single request.
+
+        Args:
+            session_manager: QBFC SessionManager COM object
+            charge_data_list: List of charge_data dicts
+
+        Returns:
+            QBFC response set object with one response per charge
+        """
+        msg_set_rq = session_manager.CreateMsgSetRequest("US", 13, 0)
+        # Set OnError attribute for batch operations (1 = continue on error)
+        msg_set_rq.Attributes.OnError = 1
+
+        for charge_data in charge_data_list:
+            charge_add_rq = msg_set_rq.AppendChargeAddRq()
+
+            # Required: Customer reference
+            charge_add_rq.CustomerRef.ListID.SetValue(charge_data['customer_ref'])
+
+            # Optional: Transaction date
+            if 'txn_date' in charge_data:
+                charge_add_rq.TxnDate.SetValue(_to_pywintypes_time(charge_data['txn_date']))
+
+            # Optional: Reference number
+            if 'ref_number' in charge_data:
+                charge_add_rq.RefNumber.SetValue(charge_data['ref_number'])
+
+            # Required: Item reference
+            if 'item_ref' in charge_data:
+                charge_add_rq.ItemRef.ListID.SetValue(charge_data['item_ref'])
+
+            # Optional: Description
+            if 'desc' in charge_data:
+                charge_add_rq.Desc.SetValue(charge_data['desc'])
+
+            # Optional: Quantity
+            if 'quantity' in charge_data:
+                charge_add_rq.Quantity.SetValue(charge_data['quantity'])
+
+            # Optional: Rate
+            if 'rate' in charge_data:
+                charge_add_rq.ORRate.Rate.SetValue(float(charge_data['rate']))
+
+            # Optional: Amount
+            if 'amount' in charge_data:
+                charge_add_rq.Amount.SetValue(float(charge_data['amount']))
+
+            # Optional: Class
+            if 'class_ref' in charge_data:
+                charge_add_rq.ClassRef.FullName.SetValue(charge_data['class_ref'])
+
+        # Execute all requests
         response_set = session_manager.DoRequests(msg_set_rq)
         return response_set

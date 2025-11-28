@@ -25,6 +25,116 @@ COLOR_PARTIAL = '#cce5ff'   # Light blue - partially paid
 COLOR_CLOSED = '#d4edda'    # Light green - completed
 
 
+def treeview_sort_column(app, tree, col, sort_state):
+    """
+    Sort treeview contents when a column header is clicked.
+
+    3-state cycle: ascending (0) → descending (1) → original order (2) → ascending...
+
+    Args:
+        app: Reference to the main QBDTestToolApp instance
+        tree: The Treeview widget
+        col: Column name to sort by
+        sort_state: 0=ascending, 1=descending, 2=reset to original
+    """
+    from workers.monitor_worker import update_invoice_tree
+
+    # Clear indicators from all columns first
+    for c in tree['columns']:
+        text = tree.heading(c, 'text').replace(' ▲', '').replace(' ▼', '')
+        tree.heading(c, text=text)
+
+    if sort_state == 2:
+        # Reset to original order by repopulating from state
+        # State order (invoices → sales receipts → charges) is the canonical order
+        update_invoice_tree(app)
+
+        # Reset command to start fresh cycle on next click
+        tree.heading(col, text=col,
+                     command=lambda c=col: treeview_sort_column(app, tree, c, 0))
+        return
+
+    # Sort the data
+    data = [(tree.set(child, col), child) for child in tree.get_children('')]
+    reverse = (sort_state == 1)
+
+    # Determine sort key based on column type
+    if col == 'Amount':
+        # Numeric sort (strip $ and commas, handle "left" suffix for partial payments)
+        def amount_key(x):
+            try:
+                # Extract first number from strings like "$100.00 ($50.00 left)"
+                amount_str = x[0].split('(')[0].strip()
+                return float(amount_str.replace('$', '').replace(',', '') or 0)
+            except ValueError:
+                return 0
+        data.sort(key=amount_key, reverse=reverse)
+    elif col == 'Ref#':
+        # Numeric sort for reference numbers
+        def ref_key(x):
+            try:
+                return int(x[0])
+            except ValueError:
+                return 0
+        data.sort(key=ref_key, reverse=reverse)
+    else:
+        # String sort (Type, Customer, Status, Last Checked)
+        data.sort(key=lambda x: str(x[0]).lower(), reverse=reverse)
+
+    # Rearrange items in sorted order
+    for index, (val, child) in enumerate(data):
+        tree.move(child, '', index)
+
+    # Update heading with sort indicator and set next state
+    indicator = ' ▼' if reverse else ' ▲'
+    next_state = (sort_state + 1) % 3
+
+    tree.heading(col, text=col + indicator,
+                 command=lambda c=col, ns=next_state: treeview_sort_column(app, tree, c, ns))
+
+
+def apply_tree_filter(app, filter_text):
+    """
+    Filter treeview to show only rows matching filter text in any column.
+
+    Uses detach/reattach for visual filtering without modifying state.
+
+    Args:
+        app: Reference to the main QBDTestToolApp instance
+        filter_text: Text to filter by (case-insensitive)
+    """
+    tree = app.invoice_tree
+    filter_text = filter_text.lower().strip()
+
+    # First, reattach all previously detached items
+    if hasattr(app, '_detached_tree_items'):
+        for item in app._detached_tree_items:
+            try:
+                tree.reattach(item, '', 'end')
+            except tk.TclError:
+                pass  # Item may have been deleted
+    app._detached_tree_items = []
+
+    # If no filter, we're done
+    if not filter_text:
+        return
+
+    # Detach items that don't match
+    for item in tree.get_children(''):
+        values = tree.item(item, 'values')
+        # Check if filter text matches any column value
+        matches = any(filter_text in str(val).lower() for val in values)
+        if not matches:
+            tree.detach(item)
+            app._detached_tree_items.append(item)
+
+
+def clear_tree_filter(app):
+    """Clear the filter and show all items."""
+    app.tree_filter_var.set('')
+    apply_tree_filter(app, '')
+
+
 def setup_monitor_tab(app):
     """
     Setup the Monitor Invoices tab.
@@ -193,12 +303,32 @@ def setup_monitor_tab(app):
     list_frame = ttk.LabelFrame(content_frame, text="Tracked Transactions", padding=SPACING_MD)
     list_frame.pack(fill='both', expand=True, padx=SPACING_MD, pady=SPACING_SM)
 
+    # Filter bar
+    filter_frame = ttk.Frame(list_frame)
+    filter_frame.pack(fill='x', pady=(0, SPACING_SM))
+
+    ttk.Label(filter_frame, text="Filter:").pack(side='left', padx=(0, SPACING_SM))
+
+    app.tree_filter_var = tk.StringVar()
+    app.tree_filter_entry = ttk.Entry(filter_frame, textvariable=app.tree_filter_var, width=30)
+    app.tree_filter_entry.pack(side='left', padx=(0, SPACING_SM))
+
+    # Bind filter on keypress (with small delay for performance)
+    def on_filter_change(*args):
+        apply_tree_filter(app, app.tree_filter_var.get())
+    app.tree_filter_var.trace_add('write', on_filter_change)
+
+    # Clear button
+    ttk.Button(filter_frame, text="✕", width=3,
+               command=lambda: clear_tree_filter(app)).pack(side='left')
+
     # Treeview for transactions
     columns = ('Type', 'Ref#', 'Customer', 'Amount', 'Status', 'Last Checked')
     app.invoice_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=TREEVIEW_HEIGHT_SHORT)
 
     for col in columns:
-        app.invoice_tree.heading(col, text=col)
+        app.invoice_tree.heading(col, text=col,
+                                  command=lambda c=col: treeview_sort_column(app, app.invoice_tree, c, 0))
         app.invoice_tree.column(col, width=COLUMN_WIDTH_LG)
 
     # Configure color tags for status

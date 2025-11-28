@@ -120,21 +120,21 @@ def update_transaction_form_visibility(app):
         line_items_label.grid_remove()
         line_items_frame.grid_remove()
 
-    # Invoice-specific fields: Show only for Invoice
+    # Invoice-specific fields: PO and Terms only for Invoice
     if txn_type == "Invoice":
         po_label.grid()
         app.txn_po_prefix.grid()
         terms_label.grid()
         app.txn_terms_combo.grid()
-        class_label.grid()
-        app.txn_class_combo.grid()
     else:
         po_label.grid_remove()
         app.txn_po_prefix.grid_remove()
         terms_label.grid_remove()
         app.txn_terms_combo.grid_remove()
-        class_label.grid_remove()
-        app.txn_class_combo.grid_remove()
+
+    # Class field: Show for all transaction types
+    class_label.grid()
+    app.txn_class_combo.grid()
 
     # Update button text
     if txn_type == "Invoice":

@@ -19,7 +19,8 @@ class ChargeGenerator:
         amount: float = None,
         item_ref: str = None,
         txn_date: str = None,
-        class_ref: str = None
+        class_ref: str = None,
+        use_auto_numbering: bool = True
     ) -> Dict[str, Any]:
         """
         Generate statement charge data.
@@ -30,6 +31,7 @@ class ChargeGenerator:
             item_ref: Item ListID (optional - QB may use default if not provided)
             txn_date: Transaction date (defaults to today)
             class_ref: Class ListID (optional)
+            use_auto_numbering: If True, let QB auto-assign ref_number (default). If False, generate random.
 
         Returns:
             Dict suitable for QBXMLBuilder.build_charge_add()
@@ -40,11 +42,14 @@ class ChargeGenerator:
         charge_data = {
             'customer_ref': customer_ref,
             'txn_date': txn_date if txn_date else datetime.now().strftime('%Y-%m-%d'),
-            'ref_number': f"CHG-{random.randint(10000, 99999)}",
             'amount': amount,
             # Note: Don't set quantity - use amount directly to avoid item type conflicts
             'desc': f"Test statement charge - {fake.sentence()}"
         }
+
+        # Only add ref_number if not using auto-numbering (let QB assign sequential numbers)
+        if not use_auto_numbering:
+            charge_data['ref_number'] = f"CHG-{random.randint(10000, 99999)}"
 
         # Add item reference if provided
         if item_ref:

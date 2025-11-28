@@ -37,7 +37,7 @@ def create_sales_receipt_worker(app, customer: dict, num_receipts: int,
                                  line_items_min: int, line_items_max: int,
                                  amount_min: float, amount_max: float, date_range: str, items: list,
                                  class_ref: str = None):
-    """Worker function to create batch sales receipts in background."""
+    """Worker function to create batch sales receipts using batch QBFC operation."""
     successful_count = 0
     failed_count = 0
 
@@ -58,79 +58,75 @@ def create_sales_receipt_worker(app, customer: dict, num_receipts: int,
 
         app.root.after(0, lambda: app._log_create(f"Starting batch creation of {num_receipts} sales receipt(s) for {customer['name']} ({date_range})..."))
 
-        # Create QB client once for entire batch
-        qb = QBIPCClient()
+        # Filter to only item types valid for line items
+        VALID_LINE_ITEM_TYPES = {'Service', 'Inventory', 'NonInventory', 'OtherCharge'}
+        valid_items = [item for item in items if item.get('type') in VALID_LINE_ITEM_TYPES]
 
-        # Create multiple sales receipts
+        # Phase 1: Generate all sales receipt data
+        app.root.after(0, lambda: app._log_create(f"Generating {num_receipts} sales receipt(s)..."))
+        receipt_data_list = []
+        receipt_amounts = []  # Track amounts for logging
+
         for i in range(num_receipts):
-            try:
-                # Randomize parameters within specified ranges
-                num_lines = random.randint(line_items_min, line_items_max)
-                amount = round(random.uniform(amount_min, amount_max), 2)
+            # Randomize parameters within specified ranges
+            num_lines = random.randint(line_items_min, line_items_max)
+            amount = round(random.uniform(amount_min, amount_max), 2)
+            receipt_amounts.append(amount)
 
-                # Randomize transaction date within range
-                if days_back > 0:
-                    random_days = random.randint(0, days_back)
-                    txn_date = (today - timedelta(days=random_days)).strftime('%Y-%m-%d')
-                else:
-                    txn_date = today.strftime('%Y-%m-%d')
+            # Randomize transaction date within range
+            if days_back > 0:
+                random_days = random.randint(0, days_back)
+                txn_date = (today - timedelta(days=random_days)).strftime('%Y-%m-%d')
+            else:
+                txn_date = today.strftime('%Y-%m-%d')
 
-                # Filter to only item types valid for line items
-                # (SalesTax, Subtotal, Discount, etc. cannot be used as regular line items)
-                VALID_LINE_ITEM_TYPES = {'Service', 'Inventory', 'NonInventory', 'OtherCharge'}
-                valid_items = [item for item in items if item.get('type') in VALID_LINE_ITEM_TYPES]
+            # Select random items for sales receipt line items
+            selected_items = random.sample(valid_items, min(num_lines, len(valid_items)))
+            item_refs = [item['list_id'] for item in selected_items]
 
-                # Select random items for sales receipt line items
-                selected_items = random.sample(valid_items, min(num_lines, len(valid_items)))
-                item_refs = [item['list_id'] for item in selected_items]
+            # Generate sales receipt data
+            receipt_data = SalesReceiptGenerator.generate_sales_receipt_data(
+                customer_ref=customer['list_id'],
+                num_line_items=num_lines,
+                total_amount=amount,
+                item_refs=item_refs,
+                txn_date=txn_date,
+                class_ref=class_ref
+            )
+            receipt_data_list.append(receipt_data)
 
-                # Generate sales receipt data
-                receipt_data = SalesReceiptGenerator.generate_sales_receipt_data(
-                    customer_ref=customer['list_id'],
-                    num_line_items=num_lines,
-                    total_amount=amount,
-                    item_refs=item_refs,
-                    txn_date=txn_date,
-                    class_ref=class_ref
-                )
+            # DEBUG: Log generated values
+            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                item_names = [item['name'] for item in selected_items]
+                app.root.after(0, lambda n=i+1, amt=amount, dt=txn_date, lines=num_lines, items=item_names:
+                              app._log_create(f"  [DEBUG {n}] Amount=${amt:.2f}, Date={dt}, Lines={lines}, Items={items}", LOG_DEBUG))
 
-                # Log current progress
+        # Phase 2: Send batch to QuickBooks
+        app.root.after(0, lambda: app._log_create(f"Sending batch of {num_receipts} sales receipt(s) to QuickBooks..."))
+        qb = QBIPCClient()
+        parser_result = qb.execute_operation('add_sales_receipts_batch', {'sales_receipt_data_list': receipt_data_list})
+
+        # Phase 3: Process responses
+        # Handle both batch format (multiple items) and single format (1 item)
+        if parser_result['success']:
+            # Check for batch format first
+            if 'sales_receipts' in parser_result.get('data', {}):
+                results = parser_result['data']['sales_receipts']
+            else:
+                # Single item format - wrap in list for uniform processing
+                results = [{'success': True, 'data': parser_result['data']}]
+
+            for i, result in enumerate(results):
                 receipt_num = i + 1
-                app.root.after(0, lambda n=receipt_num, ref=receipt_data['ref_number']:
-                              app._log_create(f"[{n}/{num_receipts}] Creating sales receipt Ref#: {ref}, Amount: ${amount:.2f}, Lines: {num_lines}", LOG_VERBOSE))
+                if result.get('success'):
+                    receipt_info = result['data']
 
-                # Send to QuickBooks via QBFC
-                parser_result = qb.execute_operation('add_sales_receipt', {'sales_receipt_data': receipt_data})
-
-                # DEBUG: Log request and response (only if DEBUG is enabled)
-                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
-                    req_str, resp_str = _format_receipt_debug(receipt_data, parser_result)
-                    app.root.after(0, lambda n=receipt_num, r=req_str:
-                                  app._log_create(f"  [DEBUG {n}] Request: {r}", LOG_DEBUG))
-                    app.root.after(0, lambda n=receipt_num, r=resp_str:
-                                  app._log_create(f"  [DEBUG {n}] Response: {r}", LOG_DEBUG))
-
-                if parser_result['success']:
-                    receipt_info = parser_result['data']
-
-                    # Create sales receipt record
-                    # Safely extract amounts (handle None values)
-                    balance_remaining = receipt_info.get('balance_remaining')
+                    # Safely extract amounts
                     total_amount_str = receipt_info.get('total_amount')
+                    total_amt = float(total_amount_str) if total_amount_str else receipt_amounts[i]
 
-                    # Convert to float, defaulting to the generated amount if not in response
-                    if balance_remaining:
-                        balance = float(balance_remaining)
-                    else:
-                        balance = amount  # Default to generated amount
-
-                    if total_amount_str:
-                        total_amt = float(total_amount_str)
-                    else:
-                        total_amt = amount  # Default to generated amount
-
-                    # Determine status - if no balance_remaining, assume open (unpaid)
-                    status = 'open' if balance > 0 else 'closed'
+                    # Sales receipts start as open (no payment method set)
+                    status = 'open'
 
                     receipt_record = SalesReceiptRecord(
                         txn_id=receipt_info['txn_id'],
@@ -145,19 +141,20 @@ def create_sales_receipt_worker(app, customer: dict, num_receipts: int,
                     app.root.after(0, lambda n=receipt_num, ref=receipt_info['ref_number'], tid=receipt_info['txn_id']:
                                   app._log_create(f"  ✓ [{n}/{num_receipts}] Sales receipt created: {ref} (ID: {tid})", LOG_VERBOSE))
                     successful_count += 1
-
                 else:
-                    error_msg = parser_result.get('error', 'Unknown error')
+                    error_msg = result.get('error', 'Unknown error')
                     app.root.after(0, lambda n=receipt_num, msg=error_msg:
                                   app._log_create(f"  ✗ [{n}/{num_receipts}] Error: {msg}"))
                     failed_count += 1
 
-            except Exception as e:
-                error_str = str(e)
-                receipt_num = i + 1
-                app.root.after(0, lambda n=receipt_num, msg=error_str:
-                              app._log_create(f"  ✗ [{n}/{num_receipts}] Error: {msg}"))
-                failed_count += 1
+            # Update tree once after all records added
+            from workers.monitor_worker import update_invoice_tree
+            app.root.after(0, lambda: update_invoice_tree(app))
+        else:
+            # Batch operation failed entirely
+            error_msg = parser_result.get('error', 'Batch operation failed')
+            app.root.after(0, lambda msg=error_msg: app._log_create(f"✗ Batch error: {msg}"))
+            failed_count = num_receipts
 
         # Final summary
         summary = f"Batch complete: {successful_count} succeeded, {failed_count} failed out of {num_receipts} total"

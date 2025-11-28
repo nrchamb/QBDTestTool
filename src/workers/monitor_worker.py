@@ -65,208 +65,305 @@ def check_all_transactions(app):
     Args:
         app: Reference to the main QBDTestToolApp instance
     """
+    # Check stop flag between each query to respond faster to stop requests
+    if app.monitoring_stop_flag:
+        return
     check_invoices(app)
+
+    if app.monitoring_stop_flag:
+        return
     check_sales_receipts(app)
+
+    if app.monitoring_stop_flag:
+        return
     check_statement_charges(app)
 
 
 def check_invoices(app):
     """
-    Check all tracked invoices for updates.
+    Check tracked invoices for updates using ModifiedDateRangeFilter.
+
+    Only queries invoices modified since last check - O(1) regardless of tracked count.
 
     Args:
         app: Reference to the main QBDTestToolApp instance
     """
     state = app.store.get_state()
+    if not state.invoices:
+        return
 
-    # Create QB client once for entire batch
+    # Get last check time (use app start time if first check)
+    last_check = getattr(app, '_last_invoice_check', None) or getattr(app, 'start_time', None)
+    if not last_check:
+        last_check = datetime.now()
+        app._last_invoice_check = last_check
+
+    # Query invoices modified since last check
     qb = QBIPCClient()
+    try:
+        parser_result = qb.execute_operation('query_invoice', {
+            'from_modified_date': last_check.strftime('%Y-%m-%d %H:%M:%S')
+        })
 
-    for invoice in state.invoices:
+        # Update last check time for next iteration
+        app._last_invoice_check = datetime.now()
+
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            modified_count = len(parser_result.get('data', {}).get('invoices', []))
+            app.root.after(0, lambda count=modified_count, tracked=len(state.invoices):
+                          app._log_monitor(f"  [DEBUG] Found {count} modified invoices (tracking {tracked})", LOG_DEBUG))
+
+        if not parser_result['success']:
+            app.root.after(0, lambda err=parser_result.get('error', 'Unknown'):
+                          app._log_monitor(f"✗ Invoice query failed: {err}"))
+            return
+
+        # Create lookup of modified invoices by txn_id
+        modified_invoices = parser_result['data'].get('invoices', [])
+        qb_invoices = {inv['txn_id']: inv for inv in modified_invoices}
+
+    except Exception as e:
+        app.root.after(0, lambda err=str(e):
+                      app._log_monitor(f"✗ Error in invoice query: {err}"))
+        return
+
+    # Build set of tracked txn_ids for fast lookup
+    tracked_ids = {inv.txn_id for inv in state.invoices}
+
+    # Process only invoices that are both tracked AND modified
+    updates_made = False
+    for qb_invoice in modified_invoices:
+        txn_id = qb_invoice.get('txn_id')
+        if txn_id not in tracked_ids:
+            continue  # Not one of our tracked invoices
+
+        # Find the tracked invoice record
+        invoice = next((inv for inv in state.invoices if inv.txn_id == txn_id), None)
+        if not invoice:
+            continue
+
         try:
-            # Query invoice via QBFC
-            parser_result = qb.execute_operation('query_invoice', {'txn_id': invoice.txn_id})
+            # Determine status: closed, partial, or open
+            balance_remaining = float(qb_invoice.get('balance_remaining', 0))
+            linked_txns = qb_invoice.get('linked_transactions', [])
 
-            # DEBUG: Log the operation (only if DEBUG is enabled)
-            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
-                debug_str = _format_query_debug('query_invoice', invoice.txn_id, parser_result)
-                app.root.after(0, lambda ref=invoice.ref_number, d=debug_str:
-                              app._log_monitor(f"  [DEBUG Invoice {ref}] {d}", LOG_DEBUG))
+            if qb_invoice['is_paid'] or balance_remaining == 0:
+                new_status = 'closed'
+            elif linked_txns and balance_remaining > 0 and balance_remaining < invoice.amount:
+                new_status = 'partial'
+            else:
+                new_status = 'open'
 
-            if parser_result['success'] and parser_result['data']['invoices']:
-                qb_invoice = parser_result['data']['invoices'][0]
+            old_status = invoice.status
 
-                # Determine status: closed, partial, or open
-                balance_remaining = float(qb_invoice.get('balance_remaining', 0))
-                linked_txns = qb_invoice.get('linked_transactions', [])
+            if new_status != old_status:
+                app.root.after(0, lambda i=invoice, ns=new_status, os=old_status:
+                              app._log_monitor(f"Status change detected: {i.ref_number} ({os} → {ns})"))
 
-                if qb_invoice['is_paid'] or balance_remaining == 0:
-                    new_status = 'closed'
-                elif linked_txns and balance_remaining > 0 and balance_remaining < invoice.amount:
-                    new_status = 'partial'
-                else:
-                    new_status = 'open'
+                # Verify transaction
+                verify_transaction(app, invoice, qb_invoice, 'Invoice')
 
-                old_status = invoice.status
+            # Update invoice record
+            updated_invoice = InvoiceRecord(
+                txn_id=invoice.txn_id,
+                ref_number=invoice.ref_number,
+                customer_name=invoice.customer_name,
+                amount=invoice.amount,
+                status=new_status,
+                created_at=invoice.created_at,
+                last_checked=datetime.now(),
+                deposit_account=qb_invoice.get('deposit_account', {}).get('full_name') if 'deposit_account' in qb_invoice else None,
+                payment_info=qb_invoice.get('linked_transactions', []),
+                balance_remaining=balance_remaining
+            )
 
-                if new_status != old_status:
-                    app.root.after(0, lambda i=invoice, ns=new_status, os=old_status:
-                                  app._log_monitor(f"Status change detected: {i.ref_number} ({os} → {ns})"))
-
-                    # Verify transaction
-                    verify_transaction(app, invoice, qb_invoice, 'Invoice')
-
-                # Update invoice record
-                updated_invoice = InvoiceRecord(
-                    txn_id=invoice.txn_id,
-                    ref_number=invoice.ref_number,
-                    customer_name=invoice.customer_name,
-                    amount=invoice.amount,
-                    status=new_status,
-                    created_at=invoice.created_at,
-                    last_checked=datetime.now(),
-                    deposit_account=qb_invoice.get('deposit_account', {}).get('full_name') if 'deposit_account' in qb_invoice else None,
-                    payment_info=qb_invoice.get('linked_transactions', []),
-                    balance_remaining=balance_remaining
-                )
-
-                app.store.dispatch(update_invoice(updated_invoice))
-                app.root.after(0, lambda: update_invoice_tree(app))
+            app.store.dispatch(update_invoice(updated_invoice))
+            updates_made = True
 
         except Exception as e:
             app.root.after(0, lambda inv=invoice, err=str(e):
                           app._log_monitor(f"✗ Error checking {inv.ref_number}: {err}"))
 
+    # Update tree only if we made changes
+    if updates_made:
+        app.root.after(0, lambda: update_invoice_tree(app))
+
 
 def check_sales_receipts(app):
     """
-    Check all tracked sales receipts for updates.
+    Check tracked sales receipts for updates using batch TxnID query.
+
+    Queries all tracked sales receipts in a single request - O(1) regardless of tracked count.
 
     Args:
         app: Reference to the main QBDTestToolApp instance
     """
     state = app.store.get_state()
+    if not state.sales_receipts:
+        return
 
-    # Create QB client once for entire batch
+    # Batch query all tracked sales receipts in a single request
+    txn_ids = [sr.txn_id for sr in state.sales_receipts]
     qb = QBIPCClient()
+    try:
+        parser_result = qb.execute_operation('query_sales_receipts_batch', {'txn_ids': txn_ids})
 
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            result_count = len(parser_result.get('data', {}).get('sales_receipts', []))
+            app.root.after(0, lambda count=result_count, tracked=len(state.sales_receipts):
+                          app._log_monitor(f"  [DEBUG] Batch queried {tracked} sales receipts, got {count} results", LOG_DEBUG))
+
+        if not parser_result['success']:
+            app.root.after(0, lambda err=parser_result.get('error', 'Unknown'):
+                          app._log_monitor(f"✗ Sales receipt batch query failed: {err}"))
+            return
+
+        # Create lookup of queried sales receipts by txn_id
+        queried_receipts = parser_result['data'].get('sales_receipts', [])
+        qb_receipts = {sr['txn_id']: sr for sr in queried_receipts}
+
+    except Exception as e:
+        app.root.after(0, lambda err=str(e):
+                      app._log_monitor(f"✗ Error in sales receipt batch query: {err}"))
+        return
+
+    # Process all tracked sales receipts using query results
+    updates_made = False
     for sr in state.sales_receipts:
+        qb_sr = qb_receipts.get(sr.txn_id)
+        if not qb_sr:
+            continue  # Sales receipt not found in QB (may have been deleted)
+
         try:
-            # Query sales receipt via QBFC
-            parser_result = qb.execute_operation('query_sales_receipt', {'txn_id': sr.txn_id})
+            # Sales receipts status is determined by payment method:
+            # - If payment_method is set (Cash, Check, CC, etc.) -> "closed"
+            # - If payment_method is NOT set -> "open"
+            payment_method = qb_sr.get('payment_method')
+            has_payment_method = payment_method is not None and payment_method.get('full_name')
+            new_status = 'closed' if has_payment_method else 'open'
+            old_status = sr.status
 
-            # DEBUG: Log the operation (only if DEBUG is enabled)
-            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
-                debug_str = _format_query_debug('query_sales_receipt', sr.txn_id, parser_result)
-                app.root.after(0, lambda ref=sr.ref_number, d=debug_str:
-                              app._log_monitor(f"  [DEBUG Receipt {ref}] {d}", LOG_DEBUG))
+            if new_status != old_status:
+                app.root.after(0, lambda s=sr, ns=new_status, os=old_status:
+                              app._log_monitor(f"Status change detected: {s.ref_number} (Sales Receipt) ({os} → {ns})"))
 
-            if parser_result['success'] and parser_result['data']['sales_receipts']:
-                qb_sr = parser_result['data']['sales_receipts'][0]
+                # Verify transaction
+                verify_transaction(app, sr, qb_sr, 'Sales Receipt')
 
-                # Sales receipts status is determined by payment method:
-                # - If payment_method is set (Cash, Check, CC, etc.) -> "closed"
-                # - If payment_method is NOT set -> "open"
-                payment_method = qb_sr.get('payment_method')
-                has_payment_method = payment_method is not None and payment_method.get('full_name')
-                new_status = 'closed' if has_payment_method else 'open'
-                old_status = sr.status
+            # Get deposit account for record
+            deposit_account = qb_sr.get('deposit_account')
 
-                if new_status != old_status:
-                    app.root.after(0, lambda s=sr, ns=new_status, os=old_status:
-                                  app._log_monitor(f"Status change detected: {s.ref_number} (Sales Receipt) ({os} → {ns})"))
+            updated_sr = SalesReceiptRecord(
+                txn_id=sr.txn_id,
+                ref_number=sr.ref_number,
+                customer_name=sr.customer_name,
+                amount=sr.amount,
+                status=new_status,
+                created_at=sr.created_at,
+                last_checked=datetime.now(),
+                deposit_account=deposit_account.get('full_name') if deposit_account else None,
+                payment_info={'payment_method': payment_method.get('full_name') if payment_method else None}
+            )
 
-                    # Verify transaction
-                    verify_transaction(app, sr, qb_sr, 'Sales Receipt')
-
-                # Get deposit account for record
-                deposit_account = qb_sr.get('deposit_account')
-
-                updated_sr = SalesReceiptRecord(
-                    txn_id=sr.txn_id,
-                    ref_number=sr.ref_number,
-                    customer_name=sr.customer_name,
-                    amount=sr.amount,
-                    status=new_status,
-                    created_at=sr.created_at,
-                    last_checked=datetime.now(),
-                    deposit_account=deposit_account.get('full_name') if deposit_account else None,
-                    payment_info={'payment_method': payment_method.get('full_name') if payment_method else None}
-                )
-
-                app.store.dispatch(update_sales_receipt(updated_sr))
-                app.root.after(0, lambda: update_invoice_tree(app))
+            app.store.dispatch(update_sales_receipt(updated_sr))
+            updates_made = True
 
         except Exception as e:
             app.root.after(0, lambda s=sr, err=str(e):
                           app._log_monitor(f"✗ Error checking {s.ref_number}: {err}"))
+
+    # Update tree only if we made changes
+    if updates_made:
+        app.root.after(0, lambda: update_invoice_tree(app))
 
 
 def check_statement_charges(app):
     """
     Check all tracked statement charges for updates.
 
+    Note: ChargeQuery doesn't support TxnID filtering in QBFC, so we query ALL charges
+    once and filter in Python. This is more efficient than N individual queries that
+    each return all charges.
+
     Args:
         app: Reference to the main QBDTestToolApp instance
     """
     state = app.store.get_state()
+    if not state.statement_charges:
+        return
 
-    # Create QB client once for entire batch
+    # Query ALL charges once (ChargeQuery doesn't support TxnID filtering)
     qb = QBIPCClient()
 
+    try:
+        parser_result = qb.execute_operation('query_charge', {})
+
+        if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+            app.root.after(0, lambda count=len(state.statement_charges):
+                          app._log_monitor(f"  [DEBUG] Queried all charges for {count} tracked charges", LOG_DEBUG))
+
+        if not parser_result['success']:
+            app.root.after(0, lambda err=parser_result.get('error', 'Unknown'):
+                          app._log_monitor(f"✗ Charge query failed: {err}"))
+            return
+
+        # Create lookup dict from results by txn_id
+        all_charges = parser_result['data'].get('charges', [])
+        qb_charges = {c['txn_id']: c for c in all_charges}
+
+    except Exception as e:
+        app.root.after(0, lambda err=str(e):
+                      app._log_monitor(f"✗ Error in charge query: {err}"))
+        return
+
+    # Process each tracked charge using the query results
     for charge in state.statement_charges:
         try:
-            # Query statement charge via QBFC
-            parser_result = qb.execute_operation('query_charge', {'txn_id': charge.txn_id})
+            qb_charge = qb_charges.get(charge.txn_id)
+            if not qb_charge:
+                continue
 
-            # DEBUG: Log the operation (only if DEBUG is enabled)
-            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
-                debug_str = _format_query_debug('query_charge', charge.txn_id, parser_result)
-                app.root.after(0, lambda ref=charge.ref_number, d=debug_str:
-                              app._log_monitor(f"  [DEBUG Charge {ref}] {d}", LOG_DEBUG))
+            # Determine status: closed, partial, or open
+            balance_remaining = float(qb_charge.get('balance_remaining', 0))
+            linked_txns = qb_charge.get('linked_transactions', [])
 
-            if parser_result['success'] and parser_result['data']['charges']:
-                qb_charge = parser_result['data']['charges'][0]
+            if qb_charge['is_paid'] or balance_remaining == 0:
+                new_status = 'closed'
+            elif linked_txns and balance_remaining > 0 and balance_remaining < charge.amount:
+                new_status = 'partial'
+            else:
+                new_status = 'open'
 
-                # Determine status: closed, partial, or open
-                balance_remaining = float(qb_charge.get('balance_remaining', 0))
-                linked_txns = qb_charge.get('linked_transactions', [])
+            old_status = charge.status
 
-                if qb_charge['is_paid'] or balance_remaining == 0:
-                    new_status = 'closed'
-                elif linked_txns and balance_remaining > 0 and balance_remaining < charge.amount:
-                    new_status = 'partial'
-                else:
-                    new_status = 'open'
+            if new_status != old_status:
+                app.root.after(0, lambda c=charge, ns=new_status, os=old_status:
+                              app._log_monitor(f"Status change detected: {c.ref_number} (Statement Charge) ({os} → {ns})"))
 
-                old_status = charge.status
+                # Verify transaction
+                verify_transaction(app, charge, qb_charge, 'Statement Charge')
 
-                if new_status != old_status:
-                    app.root.after(0, lambda c=charge, ns=new_status, os=old_status:
-                                  app._log_monitor(f"Status change detected: {c.ref_number} (Statement Charge) ({os} → {ns})"))
+            updated_charge = StatementChargeRecord(
+                txn_id=charge.txn_id,
+                ref_number=qb_charge.get('ref_number', charge.ref_number),
+                customer_name=charge.customer_name,
+                amount=charge.amount,
+                status=new_status,
+                created_at=charge.created_at,
+                last_checked=datetime.now(),
+                deposit_account=qb_charge.get('deposit_account', {}).get('full_name') if 'deposit_account' in qb_charge else None,
+                payment_info=qb_charge.get('linked_transactions', []),
+                balance_remaining=balance_remaining
+            )
 
-                    # Verify transaction
-                    verify_transaction(app, charge, qb_charge, 'Statement Charge')
-
-                updated_charge = StatementChargeRecord(
-                    txn_id=charge.txn_id,
-                    ref_number=qb_charge.get('ref_number', charge.ref_number),
-                    customer_name=charge.customer_name,
-                    amount=charge.amount,
-                    status=new_status,
-                    created_at=charge.created_at,
-                    last_checked=datetime.now(),
-                    deposit_account=qb_charge.get('deposit_account', {}).get('full_name') if 'deposit_account' in qb_charge else None,
-                    payment_info=qb_charge.get('linked_transactions', []),
-                    balance_remaining=balance_remaining
-                )
-
-                app.store.dispatch(update_statement_charge(updated_charge))
-                app.root.after(0, lambda: update_invoice_tree(app))
+            app.store.dispatch(update_statement_charge(updated_charge))
 
         except Exception as e:
             app.root.after(0, lambda c=charge, err=str(e):
                           app._log_monitor(f"✗ Error checking {c.ref_number}: {err}"))
+
+    # Update tree once after processing all charges
+    app.root.after(0, lambda: update_invoice_tree(app))
 
 
 def verify_transaction(app, transaction, qb_data: dict, txn_type: str):
@@ -335,26 +432,42 @@ def verify_transaction(app, transaction, qb_data: dict, txn_type: str):
     # Get memo values for comparison
     txn_memo = qb_data.get('memo', '')
 
-    # Query actual payment records to get their memos
+    # Query actual payment records to get their memos using batch query
     # (LinkedTxn objects don't include memo - just basic reference data)
     payment_memos = []
-    qb = QBIPCClient()
-    for payment_txn in linked_txns:
-        # Only query ReceivePayment transactions
+
+    # DEBUG: Show linked transactions
+    print(f"[DEBUG] linked_txns count: {len(linked_txns)}")
+    for lt in linked_txns:
+        print(f"[DEBUG] linked_txn: {lt}")
+
+    # Collect all ReceivePayment TxnIDs for batch query
+    payment_txn_ids = []
+    payment_indices = []  # Track which linked_txn index each payment corresponds to
+    for i, payment_txn in enumerate(linked_txns):
         if payment_txn.get('txn_type') == 'ReceivePayment':
             payment_txn_id = payment_txn.get('txn_id')
             if payment_txn_id:
-                try:
-                    result = qb.execute_operation('query_receive_payment', {'txn_id': payment_txn_id})
-                    if result.get('success') and result.get('data', {}).get('payments'):
-                        actual_payment = result['data']['payments'][0]
-                        payment_memos.append(actual_payment.get('memo', ''))
-                    else:
-                        payment_memos.append('')  # Couldn't get memo
-                except:
-                    payment_memos.append('')  # Error querying
-            else:
-                payment_memos.append('')
+                payment_txn_ids.append(payment_txn_id)
+                payment_indices.append(i)
+
+    # Batch query all payments
+    payment_memos_by_txn_id = {}
+    if payment_txn_ids:
+        try:
+            qb = QBIPCClient()
+            result = qb.execute_operation('query_receive_payments_batch', {'txn_ids': payment_txn_ids})
+            if result.get('success') and result.get('data', {}).get('payments'):
+                for payment in result['data']['payments']:
+                    payment_memos_by_txn_id[payment.get('txn_id', '')] = payment.get('memo', '')
+        except:
+            pass  # Fall back to empty memos
+
+    # Build payment_memos list in same order as linked_txns
+    for payment_txn in linked_txns:
+        if payment_txn.get('txn_type') == 'ReceivePayment':
+            payment_txn_id = payment_txn.get('txn_id', '')
+            payment_memos.append(payment_memos_by_txn_id.get(payment_txn_id, ''))
         else:
             # For other linked transaction types, use whatever memo is available
             payment_memos.append(payment_txn.get('memo', ''))

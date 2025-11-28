@@ -300,10 +300,16 @@ def load_all_worker(app):
 
         if result['success']:
             app.store.dispatch(set_items(result['data']))
-            count = result['count']
-            app.root.after(0, lambda c=count: app._log_create(f"✓ Loaded {c} items", LOG_VERBOSE))
-            app.root.after(0, lambda c=count: app.items_status_label.config(
+            items_count = result['count']
+            app.root.after(0, lambda c=items_count: app._log_create(f"✓ Loaded {c} items", LOG_VERBOSE))
+            app.root.after(0, lambda c=items_count: app.items_status_label.config(
                 text=f"{c} item{'s' if c != 1 else ''} loaded", foreground='green'
+            ))
+            # Update setup summary - both customers and items are now loaded
+            state = app.store.get_state()
+            num_customers = len(state.customers)
+            app.root.after(0, lambda nc=num_customers, ic=items_count: app.setup_summary_label.config(
+                text=f"{nc} customers, {ic} items loaded - Ready to create transactions"
             ))
         else:
             raise Exception(f"Failed to load items: {result['error']}")

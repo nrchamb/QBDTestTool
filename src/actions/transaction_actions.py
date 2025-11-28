@@ -108,11 +108,11 @@ def _create_invoices(app, customer, num_invoices, amount_min, amount_max, date_r
         if selected_terms and selected_terms != '(None)':
             terms_ref = app.terms_listid_map.get(selected_terms)
 
-        # Get selected class and look up list_id (O(1) lookup via mapping)
+        # Get selected class name (pass FullName to QBFC, not ListID)
         class_ref = None
         selected_class = app.txn_class_combo.get()
         if selected_class and selected_class != '(None)':
-            class_ref = app.classes_listid_map.get(selected_class)
+            class_ref = selected_class  # Pass the name directly for FullName.SetValue()
 
         # Disable button and update status
         app.create_transaction_btn.config(state='disabled')
@@ -156,11 +156,11 @@ def _create_sales_receipts(app, customer, num_receipts, amount_min, amount_max, 
             messagebox.showerror("Error", "Line items min cannot be greater than max")
             return
 
-        # Get selected class and look up list_id (O(1) lookup via mapping)
+        # Get selected class name (pass FullName to QBFC, not ListID)
         class_ref = None
         selected_class = app.txn_class_combo.get()
         if selected_class and selected_class != '(None)':
-            class_ref = app.classes_listid_map.get(selected_class)
+            class_ref = selected_class  # Pass the name directly for FullName.SetValue()
 
         # Disable button and update status
         app.create_transaction_btn.config(state='disabled')
@@ -193,11 +193,11 @@ def _create_charges(app, customer, num_charges, amount_min, amount_max, date_ran
         date_range: Date range string
         state: Application state
     """
-    # Get selected class and look up list_id (O(1) lookup via mapping)
+    # Get selected class name (pass FullName to QBFC, not ListID)
     class_ref = None
     selected_class = app.txn_class_combo.get()
     if selected_class and selected_class != '(None)':
-        class_ref = app.classes_listid_map.get(selected_class)
+        class_ref = selected_class  # Pass the name directly for FullName.SetValue()
 
     # Disable button and update status
     app.create_transaction_btn.config(state='disabled')

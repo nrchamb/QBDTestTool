@@ -36,7 +36,7 @@ def _format_charge_debug(charge_data: dict, result: dict) -> tuple:
 def create_charge_worker(app, customer: dict, num_charges: int,
                          amount_min: float, amount_max: float, date_range: str, items: list,
                          class_ref: str = None):
-    """Worker function to create batch statement charges in background."""
+    """Worker function to create batch statement charges using batch QBFC operation."""
     successful_count = 0
     failed_count = 0
 
@@ -65,49 +65,58 @@ def create_charge_worker(app, customer: dict, num_charges: int,
         # For statement charges, we typically use a generic service item
         charge_item = random.choice(valid_items) if valid_items else None
 
-        # Create QB client once for entire batch
-        qb = QBIPCClient()
+        # Phase 1: Generate all charge data
+        app.root.after(0, lambda: app._log_create(f"Generating {num_charges} statement charge(s)..."))
+        charge_data_list = []
+        charge_amounts = []  # Track amounts for logging
 
-        # Create multiple statement charges
         for i in range(num_charges):
-            try:
-                # Randomize amount within specified range
-                amount = round(random.uniform(amount_min, amount_max), 2)
+            # Randomize amount within specified range
+            amount = round(random.uniform(amount_min, amount_max), 2)
+            charge_amounts.append(amount)
 
-                # Randomize transaction date within range
-                if days_back > 0:
-                    random_days = random.randint(0, days_back)
-                    txn_date = (today - timedelta(days=random_days)).strftime('%Y-%m-%d')
-                else:
-                    txn_date = today.strftime('%Y-%m-%d')
+            # Randomize transaction date within range
+            if days_back > 0:
+                random_days = random.randint(0, days_back)
+                txn_date = (today - timedelta(days=random_days)).strftime('%Y-%m-%d')
+            else:
+                txn_date = today.strftime('%Y-%m-%d')
 
-                # Generate charge data
-                charge_data = ChargeGenerator.generate_statement_charge_data(
-                    customer_ref=customer['list_id'],
-                    amount=amount,
-                    item_ref=charge_item['list_id'] if charge_item else None,
-                    txn_date=txn_date,
-                    class_ref=class_ref
-                )
+            # Generate charge data
+            charge_data = ChargeGenerator.generate_statement_charge_data(
+                customer_ref=customer['list_id'],
+                amount=amount,
+                item_ref=charge_item['list_id'] if charge_item else None,
+                txn_date=txn_date,
+                class_ref=class_ref
+            )
+            charge_data_list.append(charge_data)
 
-                # Log current progress
+            # DEBUG: Log generated values
+            if should_log(LOG_DEBUG, AppConfig.get_log_level()):
+                item_name = charge_item['name'] if charge_item else 'None'
+                app.root.after(0, lambda n=i+1, amt=amount, dt=txn_date, item=item_name:
+                              app._log_create(f"  [DEBUG {n}] Amount=${amt:.2f}, Date={dt}, Item={item}", LOG_DEBUG))
+
+        # Phase 2: Send batch to QuickBooks
+        app.root.after(0, lambda: app._log_create(f"Sending batch of {num_charges} statement charge(s) to QuickBooks..."))
+        qb = QBIPCClient()
+        parser_result = qb.execute_operation('add_charges_batch', {'charge_data_list': charge_data_list})
+
+        # Phase 3: Process responses
+        # Handle both batch format (multiple items) and single format (1 item)
+        if parser_result['success']:
+            # Check for batch format first
+            if 'charges' in parser_result.get('data', {}):
+                results = parser_result['data']['charges']
+            else:
+                # Single item format - wrap in list for uniform processing
+                results = [{'success': True, 'data': parser_result['data']}]
+
+            for i, result in enumerate(results):
                 charge_num = i + 1
-                app.root.after(0, lambda n=charge_num, amt=amount:
-                              app._log_create(f"[{n}/{num_charges}] Creating statement charge: Amount: ${amt:.2f}", LOG_VERBOSE))
-
-                # Send to QuickBooks via QBFC
-                parser_result = qb.execute_operation('add_charge', {'charge_data': charge_data})
-
-                # DEBUG: Log request and response (only if DEBUG is enabled)
-                if should_log(LOG_DEBUG, AppConfig.get_log_level()):
-                    req_str, resp_str = _format_charge_debug(charge_data, parser_result)
-                    app.root.after(0, lambda n=charge_num, r=req_str:
-                                  app._log_create(f"  [DEBUG {n}] Request: {r}", LOG_DEBUG))
-                    app.root.after(0, lambda n=charge_num, r=resp_str:
-                                  app._log_create(f"  [DEBUG {n}] Response: {r}", LOG_DEBUG))
-
-                if parser_result['success']:
-                    charge_info = parser_result['data']
+                if result.get('success'):
+                    charge_info = result['data']
 
                     # Create statement charge record
                     # Note: ChargeAddRs doesn't return ref_number, use txn_id as placeholder
@@ -116,30 +125,28 @@ def create_charge_worker(app, customer: dict, num_charges: int,
                         txn_id=charge_info['txn_id'],
                         ref_number=charge_info.get('ref_number', charge_info['txn_id']),
                         customer_name=customer.get('full_name', customer['name']),
-                        amount=float(charge_info.get('amount', amount)),
+                        amount=float(charge_info.get('amount', charge_amounts[i])),
                         status='open',
                         created_at=datetime.now()
                     )
 
                     app.store.dispatch(add_statement_charge(charge_record))
-                    app.root.after(0, lambda: update_invoice_tree(app))
-
-                    app.root.after(0, lambda n=charge_num, tid=charge_info['txn_id'], amt=charge_info.get('amount', amount):
+                    app.root.after(0, lambda n=charge_num, tid=charge_info['txn_id'], amt=charge_info.get('amount', charge_amounts[i]):
                                   app._log_create(f"  ✓ [{n}/{num_charges}] Statement charge created: ${amt} (ID: {tid})", LOG_VERBOSE))
                     successful_count += 1
-
                 else:
-                    error_msg = parser_result.get('error', 'Unknown error')
+                    error_msg = result.get('error', 'Unknown error')
                     app.root.after(0, lambda n=charge_num, msg=error_msg:
                                   app._log_create(f"  ✗ [{n}/{num_charges}] Error: {msg}"))
                     failed_count += 1
 
-            except Exception as e:
-                error_str = str(e)
-                charge_num = i + 1
-                app.root.after(0, lambda n=charge_num, msg=error_str:
-                              app._log_create(f"  ✗ [{n}/{num_charges}] Error: {msg}"))
-                failed_count += 1
+            # Update tree once after all records added
+            app.root.after(0, lambda: update_invoice_tree(app))
+        else:
+            # Batch operation failed entirely
+            error_msg = parser_result.get('error', 'Batch operation failed')
+            app.root.after(0, lambda msg=error_msg: app._log_create(f"✗ Batch error: {msg}"))
+            failed_count = num_charges
 
         # Final summary
         summary = f"Batch complete: {successful_count} succeeded, {failed_count} failed out of {num_charges} total"

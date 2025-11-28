@@ -20,7 +20,8 @@ class SalesReceiptGenerator:
         item_refs: list = None,
         total_amount: float = None,
         txn_date: str = None,
-        class_ref: str = None
+        class_ref: str = None,
+        use_auto_numbering: bool = True
     ) -> Dict[str, Any]:
         """
         Generate sales receipt data.
@@ -32,6 +33,7 @@ class SalesReceiptGenerator:
             total_amount: Target total amount (will randomize if not specified)
             txn_date: Transaction date (defaults to today)
             class_ref: Class ListID (optional, applied to all line items)
+            use_auto_numbering: If True, let QB auto-assign ref_number (default). If False, generate random.
 
         Returns:
             Dict suitable for QBXMLBuilder.build_sales_receipt_add()
@@ -72,18 +74,21 @@ class SalesReceiptGenerator:
             if item_refs and i < len(item_refs):
                 line_item['item_ref'] = item_refs[i]
 
-            # Add class reference if provided (applied to each line item)
-            if class_ref:
-                line_item['class_ref'] = class_ref
-
             line_items.append(line_item)
 
         sales_receipt_data = {
             'customer_ref': customer_ref,
             'txn_date': txn_date if txn_date else datetime.now().strftime('%Y-%m-%d'),
-            'ref_number': f"SR-{random.randint(10000, 99999)}",
             'line_items': line_items,
             'memo': f"Test sales receipt - {fake.sentence()}"
         }
+
+        # Only add ref_number if not using auto-numbering (let QB assign sequential numbers)
+        if not use_auto_numbering:
+            sales_receipt_data['ref_number'] = f"SR-{random.randint(10000, 99999)}"
+
+        # Add optional class reference (transaction level)
+        if class_ref:
+            sales_receipt_data['class_ref'] = class_ref
 
         return sales_receipt_data

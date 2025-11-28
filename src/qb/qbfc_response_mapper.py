@@ -17,6 +17,37 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# QBFC Transaction Type enum values (from ENTxnType)
+QBFC_TXN_TYPE_MAP = {
+    0: 'ARRefundCreditCard',
+    1: 'Bill',
+    2: 'BillPaymentCheck',
+    3: 'BillPaymentCreditCard',
+    4: 'BuildAssembly',
+    5: 'Charge',
+    6: 'Check',
+    7: 'CreditCardCharge',
+    8: 'CreditCardCredit',
+    9: 'CreditMemo',
+    10: 'Deposit',
+    11: 'Estimate',
+    12: 'InventoryAdjustment',
+    13: 'Invoice',
+    14: 'ItemReceipt',
+    15: 'JournalEntry',
+    16: 'LiabilityAdjustment',
+    17: 'Paycheck',
+    18: 'PayrollLiabilityCheck',
+    19: 'PurchaseOrder',
+    20: 'ReceivePayment',
+    21: 'SalesOrder',
+    22: 'SalesReceipt',
+    23: 'SalesTaxPaymentCheck',
+    24: 'Transfer',
+    25: 'VendorCredit',
+    26: 'YTDAdjustment',
+}
+
 
 class QBFCResponseMapper:
     """Maps QBFC response objects to Python dicts matching QBXMLParser output."""
@@ -52,6 +83,17 @@ class QBFCResponseMapper:
             response_type = response.Type.GetAsString()
 
             # Map to appropriate parser based on type
+            # Check for batch operations first (multiple responses)
+            if response_set.ResponseList.Count > 1:
+                # Batch operation - check first response type to determine mapper
+                if 'InvoiceAdd' in response_type:
+                    return QBFCResponseMapper._map_invoices_batch_add(response_set)
+                elif 'SalesReceiptAdd' in response_type:
+                    return QBFCResponseMapper._map_sales_receipts_batch_add(response_set)
+                elif 'ChargeAdd' in response_type:
+                    return QBFCResponseMapper._map_charges_batch_add(response_set)
+
+            # Single response operations
             if 'CustomerAdd' in response_type:
                 return QBFCResponseMapper._map_customer_add(response)
             elif 'CustomerQuery' in response_type:
@@ -116,8 +158,19 @@ class QBFCResponseMapper:
                     return value.strftime('%Y-%m-%dT%H:%M:%S')
                 return value
             return None if allow_none else ''
-        except:
+        except Exception:
             return None if allow_none else ''
+
+    @staticmethod
+    def _map_txn_type(txn_type_value):
+        """Convert QBFC transaction type integer enum to string name.
+
+        QBFC returns TxnType as an integer enum value (e.g., 20 for ReceivePayment).
+        This method converts it to the string name expected by verification logic.
+        """
+        if isinstance(txn_type_value, int):
+            return QBFC_TXN_TYPE_MAP.get(txn_type_value, f'Unknown({txn_type_value})')
+        return txn_type_value  # Already a string or None
 
     @staticmethod
     def _map_customer_add(response):
@@ -250,7 +303,9 @@ class QBFCResponseMapper:
                         linked = invoice_ret.LinkedTxnList.GetAt(j)
                         linked_data = {
                             'txn_id': QBFCResponseMapper._safe_get_value(linked.TxnID),
-                            'txn_type': QBFCResponseMapper._safe_get_value(linked.TxnType),
+                            'txn_type': QBFCResponseMapper._map_txn_type(
+                                QBFCResponseMapper._safe_get_value(linked.TxnType)
+                            ),
                             'txn_date': QBFCResponseMapper._safe_get_value(linked.TxnDate),
                             'ref_number': QBFCResponseMapper._safe_get_value(linked.RefNumber),
                             'amount': QBFCResponseMapper._safe_get_value(linked.Amount)
@@ -393,7 +448,9 @@ class QBFCResponseMapper:
                         linked = receipt_ret.LinkedTxnList.GetAt(j)
                         linked_data = {
                             'txn_id': QBFCResponseMapper._safe_get_value(linked.TxnID),
-                            'txn_type': QBFCResponseMapper._safe_get_value(linked.TxnType),
+                            'txn_type': QBFCResponseMapper._map_txn_type(
+                                QBFCResponseMapper._safe_get_value(linked.TxnType)
+                            ),
                             'txn_date': QBFCResponseMapper._safe_get_value(linked.TxnDate),
                             'ref_number': QBFCResponseMapper._safe_get_value(linked.RefNumber),
                             'amount': QBFCResponseMapper._safe_get_value(linked.Amount)
@@ -537,7 +594,9 @@ class QBFCResponseMapper:
                         linked = charge_ret.LinkedTxnList.GetAt(j)
                         linked_data = {
                             'txn_id': QBFCResponseMapper._safe_get_value(linked.TxnID),
-                            'txn_type': QBFCResponseMapper._safe_get_value(linked.TxnType),
+                            'txn_type': QBFCResponseMapper._map_txn_type(
+                                QBFCResponseMapper._safe_get_value(linked.TxnType)
+                            ),
                             'txn_date': QBFCResponseMapper._safe_get_value(linked.TxnDate),
                             'ref_number': QBFCResponseMapper._safe_get_value(linked.RefNumber),
                             'amount': QBFCResponseMapper._safe_get_value(linked.Amount)
@@ -853,3 +912,140 @@ class QBFCResponseMapper:
                 payments_list.append(payment_data)
 
         return {'success': True, 'data': {'payments': payments_list}}
+
+    # =========================================================================
+    # BATCH ADD RESPONSE MAPPERS
+    # =========================================================================
+
+    @staticmethod
+    def _map_invoices_batch_add(response_set):
+        """Map batch InvoiceAddRs responses - returns list of results."""
+        results = []
+
+        for i in range(response_set.ResponseList.Count):
+            response = response_set.ResponseList.GetAt(i)
+
+            if response.StatusCode != 0:
+                results.append({
+                    'success': False,
+                    'error': response.StatusMessage,
+                    'index': i
+                })
+                continue
+
+            invoice_ret = response.Detail
+            results.append({
+                'success': True,
+                'index': i,
+                'data': {
+                    'txn_id': QBFCResponseMapper._safe_get_value(invoice_ret.TxnID),
+                    'ref_number': QBFCResponseMapper._safe_get_value(invoice_ret.RefNumber),
+                    'txn_date': QBFCResponseMapper._safe_get_value(invoice_ret.TxnDate),
+                    'customer_ref': {
+                        'list_id': QBFCResponseMapper._safe_get_value(invoice_ret.CustomerRef.ListID),
+                        'full_name': QBFCResponseMapper._safe_get_value(invoice_ret.CustomerRef.FullName)
+                    },
+                    'subtotal': QBFCResponseMapper._safe_get_value(invoice_ret.Subtotal),
+                    'balance_remaining': QBFCResponseMapper._safe_get_value(invoice_ret.BalanceRemaining),
+                    'is_paid': QBFCResponseMapper._safe_get_value(invoice_ret.IsPaid) in (True, 'true'),
+                    'edit_sequence': QBFCResponseMapper._safe_get_value(invoice_ret.EditSequence)
+                }
+            })
+
+        return {'success': True, 'data': {'invoices': results}}
+
+    @staticmethod
+    def _map_sales_receipts_batch_add(response_set):
+        """Map batch SalesReceiptAddRs responses - returns list of results."""
+        results = []
+
+        for i in range(response_set.ResponseList.Count):
+            response = response_set.ResponseList.GetAt(i)
+
+            if response.StatusCode != 0:
+                results.append({
+                    'success': False,
+                    'error': response.StatusMessage,
+                    'index': i
+                })
+                continue
+
+            receipt_ret = response.Detail
+            data = {
+                'txn_id': QBFCResponseMapper._safe_get_value(receipt_ret.TxnID),
+                'ref_number': QBFCResponseMapper._safe_get_value(receipt_ret.RefNumber),
+                'txn_date': QBFCResponseMapper._safe_get_value(receipt_ret.TxnDate),
+                'edit_sequence': QBFCResponseMapper._safe_get_value(receipt_ret.EditSequence)
+            }
+
+            try:
+                data['customer_ref'] = {
+                    'list_id': QBFCResponseMapper._safe_get_value(receipt_ret.CustomerRef.ListID),
+                    'full_name': QBFCResponseMapper._safe_get_value(receipt_ret.CustomerRef.FullName)
+                }
+            except:
+                data['customer_ref'] = {'list_id': '', 'full_name': ''}
+
+            try:
+                data['total_amount'] = QBFCResponseMapper._safe_get_value(receipt_ret.TotalAmount)
+            except:
+                data['total_amount'] = ''
+
+            try:
+                data['is_pending'] = QBFCResponseMapper._safe_get_value(receipt_ret.IsPending) in (True, 'true')
+            except:
+                data['is_pending'] = False
+
+            data['balance_remaining'] = '0'  # Sales receipts are paid in full
+
+            results.append({
+                'success': True,
+                'index': i,
+                'data': data
+            })
+
+        return {'success': True, 'data': {'sales_receipts': results}}
+
+    @staticmethod
+    def _map_charges_batch_add(response_set):
+        """Map batch ChargeAddRs responses - returns list of results."""
+        results = []
+
+        for i in range(response_set.ResponseList.Count):
+            response = response_set.ResponseList.GetAt(i)
+
+            if response.StatusCode != 0:
+                results.append({
+                    'success': False,
+                    'error': response.StatusMessage,
+                    'index': i
+                })
+                continue
+
+            charge_ret = response.Detail
+            data = {
+                'txn_id': QBFCResponseMapper._safe_get_value(charge_ret.TxnID),
+                'txn_date': QBFCResponseMapper._safe_get_value(charge_ret.TxnDate),
+                'edit_sequence': QBFCResponseMapper._safe_get_value(charge_ret.EditSequence)
+            }
+
+            try:
+                data['customer_ref'] = {
+                    'list_id': QBFCResponseMapper._safe_get_value(charge_ret.CustomerRef.ListID),
+                    'full_name': QBFCResponseMapper._safe_get_value(charge_ret.CustomerRef.FullName)
+                }
+            except:
+                data['customer_ref'] = {'list_id': '', 'full_name': ''}
+
+            try:
+                data['amount'] = QBFCResponseMapper._safe_get_value(charge_ret.Amount)
+            except:
+                data['amount'] = ''
+
+            results.append({
+                'success': True,
+                'index': i,
+                'data': data
+            })
+
+        return {'success': True, 'data': {'charges': results}}
