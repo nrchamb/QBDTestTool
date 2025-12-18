@@ -8,8 +8,230 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 import logging
 import pywintypes
+import win32com.client
+import xml.etree.ElementTree as ET
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_qb_xml_response(response_xml: str) -> str:
+    """
+    Sanitize QuickBooks XML response to handle encoding issues.
+
+    QuickBooks may return special characters (em dashes, curly quotes, etc.)
+    that cause XML parsing issues. This function normalizes them.
+
+    Args:
+        response_xml: Raw XML response string from QuickBooks
+
+    Returns:
+        Sanitized XML string safe for parsing
+    """
+    if not response_xml:
+        return response_xml
+
+    # Common Windows-1252 special characters that cause issues
+    # Map to ASCII-safe equivalents
+    replacements = {
+        '\u2014': '-',   # em dash (—)
+        '\u2013': '-',   # en dash (–)
+        '\u2018': "'",   # left single quote (')
+        '\u2019': "'",   # right single quote (')
+        '\u201c': '"',   # left double quote (")
+        '\u201d': '"',   # right double quote (")
+        '\u2026': '...', # ellipsis (…)
+        '\u2022': '*',   # bullet (•)
+        '\u00a0': ' ',   # non-breaking space
+        '\u00ae': '(R)', # registered trademark (®)
+        '\u00a9': '(C)', # copyright (©)
+        '\u2122': 'TM',  # trademark (™)
+    }
+
+    for old, new in replacements.items():
+        response_xml = response_xml.replace(old, new)
+
+    # For any remaining non-ASCII, encode to ASCII with replacement
+    # This handles edge cases we haven't explicitly mapped
+    try:
+        response_xml = response_xml.encode('ascii', 'replace').decode('ascii')
+    except Exception:
+        pass  # Keep original if encoding fails
+
+    return response_xml
+
+
+def _is_encoding_error(error: Exception) -> bool:
+    """Check if an exception is related to XML/UTF encoding issues."""
+    error_str = str(error).lower()
+    return any(keyword in error_str for keyword in [
+        'utfdataformat',
+        'utf',
+        'encoding',
+        'invalid byte',
+        'saxparse',
+        'xml',
+    ])
+
+
+class QBXMLRP2Fallback:
+    """
+    Fallback query handler using QBXMLRP2 for when QBFC fails due to encoding issues.
+
+    QBXMLRP2 gives us access to raw XML responses which we can sanitize
+    before parsing, avoiding encoding errors from special characters.
+    """
+
+    @staticmethod
+    def query_customers_raw(app_name: str = "QBDTestTool") -> Dict[str, Any]:
+        """
+        Query customers using QBXMLRP2 with XML sanitization.
+
+        Args:
+            app_name: Application name for QB connection
+
+        Returns:
+            Dict matching QBFCResponseMapper.map_customer_query output format
+        """
+        rp = None
+        ticket = None
+
+        try:
+            # Create QBXMLRP2 request processor
+            rp = win32com.client.Dispatch("QBXMLRP2.RequestProcessor")
+            rp.OpenConnection("", app_name)
+            ticket = rp.BeginSession("", 0)  # Empty = currently open company
+
+            # Build CustomerQuery request XML
+            request_xml = '''<?xml version="1.0" encoding="utf-8"?>
+<?qbxml version="13.0"?>
+<QBXML>
+    <QBXMLMsgsRq onError="stopOnError">
+        <CustomerQueryRq>
+            <ActiveStatus>ActiveOnly</ActiveStatus>
+        </CustomerQueryRq>
+    </QBXMLMsgsRq>
+</QBXML>'''
+
+            # Send request and get raw response
+            response_xml = rp.ProcessRequest(ticket, request_xml)
+
+            # Sanitize the response to handle encoding issues
+            response_xml = _sanitize_qb_xml_response(response_xml)
+
+            # Parse the sanitized XML
+            return QBXMLRP2Fallback._parse_customer_response(response_xml)
+
+        except Exception as e:
+            logger.error(f"QBXMLRP2 fallback failed: {e}")
+            return {'success': False, 'error': f"Fallback query failed: {e}"}
+
+        finally:
+            # Clean up connection
+            if ticket and rp:
+                try:
+                    rp.EndSession(ticket)
+                except Exception:
+                    pass
+            if rp:
+                try:
+                    rp.CloseConnection()
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _parse_customer_response(response_xml: str) -> Dict[str, Any]:
+        """
+        Parse customer query XML response into dict format.
+
+        Args:
+            response_xml: Sanitized XML response string
+
+        Returns:
+            Dict with 'success', 'data' containing 'customers' list
+        """
+        try:
+            root = ET.fromstring(response_xml)
+
+            # Find CustomerQueryRs
+            customer_rs = root.find('.//CustomerQueryRs')
+            if customer_rs is None:
+                return {'success': False, 'error': 'No CustomerQueryRs in response'}
+
+            # Check status
+            status_code = customer_rs.get('statusCode', '0')
+            if status_code != '0':
+                status_msg = customer_rs.get('statusMessage', 'Unknown error')
+                return {'success': False, 'error': status_msg, 'status_code': status_code}
+
+            # Parse customers
+            customers = []
+            for cust_ret in customer_rs.findall('CustomerRet'):
+                customer = QBXMLRP2Fallback._parse_customer_ret(cust_ret)
+                customers.append(customer)
+
+            return {
+                'success': True,
+                'data': {'customers': customers}
+            }
+
+        except ET.ParseError as e:
+            logger.error(f"XML parse error: {e}")
+            return {'success': False, 'error': f"XML parse error: {e}"}
+
+    @staticmethod
+    def _parse_customer_ret(cust_ret) -> Dict[str, Any]:
+        """Parse a single CustomerRet element into a dict."""
+        def get_text(element, path, default=''):
+            el = element.find(path)
+            return el.text if el is not None and el.text else default
+
+        customer = {
+            'list_id': get_text(cust_ret, 'ListID'),
+            'name': get_text(cust_ret, 'Name'),
+            'full_name': get_text(cust_ret, 'FullName'),
+            'is_active': get_text(cust_ret, 'IsActive', 'true').lower() == 'true',
+            'company_name': get_text(cust_ret, 'CompanyName'),
+            'first_name': get_text(cust_ret, 'FirstName'),
+            'last_name': get_text(cust_ret, 'LastName'),
+            'email': get_text(cust_ret, 'Email'),
+            'phone': get_text(cust_ret, 'Phone'),
+            'balance': get_text(cust_ret, 'Balance', '0'),
+        }
+
+        # Parse billing address if present
+        bill_addr = cust_ret.find('BillAddress')
+        if bill_addr is not None:
+            customer['billing_address'] = {
+                'addr1': get_text(bill_addr, 'Addr1'),
+                'addr2': get_text(bill_addr, 'Addr2'),
+                'city': get_text(bill_addr, 'City'),
+                'state': get_text(bill_addr, 'State'),
+                'postal_code': get_text(bill_addr, 'PostalCode'),
+                'country': get_text(bill_addr, 'Country'),
+            }
+
+        # Parse shipping address if present
+        ship_addr = cust_ret.find('ShipAddress')
+        if ship_addr is not None:
+            customer['shipping_address'] = {
+                'addr1': get_text(ship_addr, 'Addr1'),
+                'addr2': get_text(ship_addr, 'Addr2'),
+                'city': get_text(ship_addr, 'City'),
+                'state': get_text(ship_addr, 'State'),
+                'postal_code': get_text(ship_addr, 'PostalCode'),
+                'country': get_text(ship_addr, 'Country'),
+            }
+
+        # Parse parent ref if present
+        parent_ref = cust_ret.find('ParentRef')
+        if parent_ref is not None:
+            customer['parent_ref'] = {
+                'list_id': get_text(parent_ref, 'ListID'),
+                'full_name': get_text(parent_ref, 'FullName'),
+            }
+
+        return customer
+
 
 # QBFC ENJobStatus enum values
 JOB_STATUS_MAP = {

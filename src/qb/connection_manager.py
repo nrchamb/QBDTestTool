@@ -12,7 +12,7 @@ from multiprocessing import Queue
 from typing import Optional, Dict, Any
 from datetime import datetime
 from .qbfc_connection import QBFCConnection
-from .qbfc_operations import QBFCOperations
+from .qbfc_operations import QBFCOperations, QBXMLRP2Fallback, _is_encoding_error
 from .qbfc_response_mapper import QBFCResponseMapper
 
 
@@ -182,7 +182,18 @@ class QBConnectionManager:
                 case 'query_account':
                     response_set = QBFCOperations.query_account(session_manager, params.get('account_type'))
                 case 'query_customer':
-                    response_set = QBFCOperations.query_customer(session_manager)
+                    try:
+                        response_set = QBFCOperations.query_customer(session_manager)
+                    except Exception as qbfc_error:
+                        if _is_encoding_error(qbfc_error):
+                            # Fallback to QBXMLRP2 with sanitization for encoding issues
+                            print(f"[QB Manager] QBFC encoding error, using QBXMLRP2 fallback")
+                            fallback_response = QBXMLRP2Fallback.query_customers_raw()
+                            response['success'] = True
+                            response['response'] = fallback_response
+                            self.response_queue.put(response, timeout=5.0)
+                            return
+                        raise
                 case 'query_item':
                     response_set = QBFCOperations.query_item(session_manager, params.get('item_type'))
                 case 'query_terms':
