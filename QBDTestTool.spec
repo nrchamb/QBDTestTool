@@ -16,6 +16,7 @@ a = Analysis(
         'win32com.client',
         'pythoncom',
         'pywintypes',
+        'win32timezone',
         'win32api',
         'win32gui',
         'win32con',
