@@ -114,6 +114,9 @@ def _create_invoices(app, customer, num_invoices, amount_min, amount_max, date_r
         if selected_class and selected_class != '(None)':
             class_ref = selected_class  # Pass the name directly for FullName.SetValue()
 
+        # Get item reuse setting
+        allow_item_reuse = app.item_reuse_var.get() if hasattr(app, 'item_reuse_var') else False
+
         # Disable button and update status
         app.create_transaction_btn.config(state='disabled')
         plural = "s" if num_invoices > 1 else ""
@@ -124,7 +127,7 @@ def _create_invoices(app, customer, num_invoices, amount_min, amount_max, date_r
             target=create_invoice_worker,
             args=(app, customer, num_invoices, line_items_min, line_items_max,
                   amount_min, amount_max, date_range, state.items,
-                  po_prefix, terms_ref, class_ref),
+                  po_prefix, terms_ref, class_ref, allow_item_reuse),
             daemon=True
         )
         thread.start()
@@ -162,6 +165,9 @@ def _create_sales_receipts(app, customer, num_receipts, amount_min, amount_max, 
         if selected_class and selected_class != '(None)':
             class_ref = selected_class  # Pass the name directly for FullName.SetValue()
 
+        # Get item reuse setting
+        allow_item_reuse = app.item_reuse_var.get() if hasattr(app, 'item_reuse_var') else False
+
         # Disable button and update status
         app.create_transaction_btn.config(state='disabled')
         plural = "s" if num_receipts > 1 else ""
@@ -171,7 +177,7 @@ def _create_sales_receipts(app, customer, num_receipts, amount_min, amount_max, 
         thread = threading.Thread(
             target=create_sales_receipt_worker,
             args=(app, customer, num_receipts, line_items_min, line_items_max,
-                  amount_min, amount_max, date_range, state.items, class_ref),
+                  amount_min, amount_max, date_range, state.items, class_ref, allow_item_reuse),
             daemon=True
         )
         thread.start()

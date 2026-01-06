@@ -109,15 +109,20 @@ class QBDTestToolApp:
         self.notebook.add(self.create_tab, text='Create Data')
         setup_create_tab(self)
 
-        # Tab 2: Monitor Transactions
-        self.monitor_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.monitor_tab, text='Monitor Transactions')
-        setup_monitor_tab(self)
+        # Tab 2: Monitor Transactions (conditional based on config)
+        self.monitoring_enabled = AppConfig.get_monitoring_enabled()
+        if self.monitoring_enabled:
+            self.monitor_tab = ttk.Frame(self.notebook)
+            self.notebook.add(self.monitor_tab, text='Monitor Transactions')
+            setup_monitor_tab(self)
 
-        # Tab 3: Verification Results
-        self.verify_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.verify_tab, text='Verification Results')
-        setup_verify_tab(self)
+            # Tab 3: Verification Results (only shown when monitoring is enabled)
+            self.verify_tab = ttk.Frame(self.notebook)
+            self.notebook.add(self.verify_tab, text='Verification Results')
+            setup_verify_tab(self)
+        else:
+            self.monitor_tab = None
+            self.verify_tab = None
 
         # Tab 4: Settings
         self.settings_tab = ttk.Frame(self.notebook)
@@ -364,9 +369,10 @@ class QBDTestToolApp:
             status_text += " | MONITORING ACTIVE"
         self.status_bar.config(text=status_text)
 
-        # Update monitor tab transaction list
-        from workers.monitor_worker import update_invoice_tree
-        update_invoice_tree(self)
+        # Update monitor tab transaction list (only if monitoring is enabled)
+        if self.monitoring_enabled and hasattr(self, 'invoice_tree'):
+            from workers.monitor_worker import update_invoice_tree
+            update_invoice_tree(self)
 
 ### MARK: Main
 

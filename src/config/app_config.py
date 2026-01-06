@@ -42,6 +42,10 @@ DEFAULT_CONFIG = {
     },
     "debug": {
         "tools_enabled": False  # Show debug/dev tools in UI
+    },
+    "features": {
+        "monitoring_enabled": True,  # Enable monitoring tab (disable for low-resource VMs)
+        "allow_item_reuse": False  # Allow same item multiple times in a transaction
     }
 }
 
@@ -284,4 +288,60 @@ class AppConfig:
         if 'debug' not in config:
             config['debug'] = {}
         config['debug']['tools_enabled'] = enabled
+        return AppConfig.save_config(config)
+
+    @staticmethod
+    def get_monitoring_enabled() -> bool:
+        """
+        Get monitoring feature enabled setting.
+
+        Returns:
+            True if monitoring tab should be shown
+        """
+        config = AppConfig.load_config()
+        return config.get('features', {}).get('monitoring_enabled', True)
+
+    @staticmethod
+    def save_monitoring_enabled(enabled: bool) -> bool:
+        """
+        Save monitoring feature enabled setting.
+
+        Args:
+            enabled: Whether to show monitoring tab
+
+        Returns:
+            True if successful
+        """
+        config = AppConfig.load_config()
+        if 'features' not in config:
+            config['features'] = {}
+        config['features']['monitoring_enabled'] = enabled
+        return AppConfig.save_config(config)
+
+    @staticmethod
+    def get_allow_item_reuse() -> bool:
+        """
+        Get allow item reuse setting.
+
+        Returns:
+            True if items can be reused in same transaction
+        """
+        config = AppConfig.load_config()
+        return config.get('features', {}).get('allow_item_reuse', False)
+
+    @staticmethod
+    def save_allow_item_reuse(enabled: bool) -> bool:
+        """
+        Save allow item reuse setting.
+
+        Args:
+            enabled: Whether to allow item reuse
+
+        Returns:
+            True if successful
+        """
+        config = AppConfig.load_config()
+        if 'features' not in config:
+            config['features'] = {}
+        config['features']['allow_item_reuse'] = enabled
         return AppConfig.save_config(config)

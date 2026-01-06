@@ -36,7 +36,8 @@ def _format_invoice_debug(invoice_data: dict, result: dict) -> tuple:
 def create_invoice_worker(app, customer: dict, num_invoices: int,
                           line_items_min: int, line_items_max: int,
                           amount_min: float, amount_max: float, date_range: str, items: list,
-                          po_prefix: str = None, terms_ref: str = None, class_ref: str = None):
+                          po_prefix: str = None, terms_ref: str = None, class_ref: str = None,
+                          allow_item_reuse: bool = False):
     """Worker function to create batch invoices in background using batch QBFC operation."""
     successful_count = 0
     failed_count = 0
@@ -81,7 +82,12 @@ def create_invoice_worker(app, customer: dict, num_invoices: int,
                 txn_date = today.strftime('%Y-%m-%d')
 
             # Select random items for invoice line items
-            selected_items = random.sample(valid_items, min(num_lines, len(valid_items)))
+            if allow_item_reuse:
+                # Allow same item multiple times (for large invoices with limited items)
+                selected_items = random.choices(valid_items, k=num_lines) if valid_items else []
+            else:
+                # No duplicates within same invoice (caps at available items)
+                selected_items = random.sample(valid_items, min(num_lines, len(valid_items)))
             item_refs = [item['list_id'] for item in selected_items]
 
             # Generate invoice data

@@ -36,7 +36,7 @@ def _format_receipt_debug(receipt_data: dict, result: dict) -> tuple:
 def create_sales_receipt_worker(app, customer: dict, num_receipts: int,
                                  line_items_min: int, line_items_max: int,
                                  amount_min: float, amount_max: float, date_range: str, items: list,
-                                 class_ref: str = None):
+                                 class_ref: str = None, allow_item_reuse: bool = False):
     """Worker function to create batch sales receipts using batch QBFC operation."""
     successful_count = 0
     failed_count = 0
@@ -81,7 +81,12 @@ def create_sales_receipt_worker(app, customer: dict, num_receipts: int,
                 txn_date = today.strftime('%Y-%m-%d')
 
             # Select random items for sales receipt line items
-            selected_items = random.sample(valid_items, min(num_lines, len(valid_items)))
+            if allow_item_reuse:
+                # Allow same item multiple times (for large invoices with limited items)
+                selected_items = random.choices(valid_items, k=num_lines) if valid_items else []
+            else:
+                # No duplicates within same receipt (caps at available items)
+                selected_items = random.sample(valid_items, min(num_lines, len(valid_items)))
             item_refs = [item['list_id'] for item in selected_items]
 
             # Generate sales receipt data

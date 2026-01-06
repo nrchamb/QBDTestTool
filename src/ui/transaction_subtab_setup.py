@@ -132,13 +132,28 @@ def setup_transaction_subtab(app):
     app.txn_line_items_label.grid(row=row, column=0, sticky='w', pady=SPACING_SM, padx=SPACING_SM)
     app.txn_line_items_frame = ttk.Frame(form_frame)
     app.txn_line_items_frame.grid(row=row, column=1, sticky='w', pady=SPACING_SM, padx=SPACING_SM)
-    app.txn_lines_min = ttk.Spinbox(app.txn_line_items_frame, from_=1, to=20, width=SPINBOX_WIDTH_SHORT)
+    app.txn_lines_min = ttk.Spinbox(app.txn_line_items_frame, from_=1, to=500, width=SPINBOX_WIDTH_SHORT)
     app.txn_lines_min.set(txn_defaults.get('line_items_min', 1))
     app.txn_lines_min.pack(side='left')
     ttk.Label(app.txn_line_items_frame, text=" to ").pack(side='left', padx=SPACING_SM)
-    app.txn_lines_max = ttk.Spinbox(app.txn_line_items_frame, from_=1, to=20, width=SPINBOX_WIDTH_SHORT)
+    app.txn_lines_max = ttk.Spinbox(app.txn_line_items_frame, from_=1, to=500, width=SPINBOX_WIDTH_SHORT)
     app.txn_lines_max.set(txn_defaults.get('line_items_max', 3))
     app.txn_lines_max.pack(side='left')
+    row += 1
+
+    # Item reuse checkbox (for large invoices with limited items)
+    app.txn_item_reuse_label = ttk.Label(form_frame, text="Item Selection:")
+    app.txn_item_reuse_label.grid(row=row, column=0, sticky='w', pady=SPACING_SM, padx=SPACING_SM)
+    app.txn_item_reuse_frame = ttk.Frame(form_frame)
+    app.txn_item_reuse_frame.grid(row=row, column=1, sticky='w', pady=SPACING_SM, padx=SPACING_SM)
+    app.item_reuse_var = tk.BooleanVar(value=AppConfig.get_allow_item_reuse())
+    app.txn_item_reuse_check = ttk.Checkbutton(
+        app.txn_item_reuse_frame,
+        text="Allow item reuse (for large invoices)",
+        variable=app.item_reuse_var,
+        command=lambda: AppConfig.save_allow_item_reuse(app.item_reuse_var.get())
+    )
+    app.txn_item_reuse_check.pack(side='left')
     row += 1
 
     # Amount range

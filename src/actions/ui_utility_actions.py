@@ -116,9 +116,17 @@ def update_transaction_form_visibility(app):
     if txn_type in ["Invoice", "SalesReceipt"]:
         line_items_label.grid()
         line_items_frame.grid()
+        # Also show item reuse option
+        if hasattr(app, 'txn_item_reuse_label'):
+            app.txn_item_reuse_label.grid()
+            app.txn_item_reuse_frame.grid()
     else:
         line_items_label.grid_remove()
         line_items_frame.grid_remove()
+        # Also hide item reuse option
+        if hasattr(app, 'txn_item_reuse_label'):
+            app.txn_item_reuse_label.grid_remove()
+            app.txn_item_reuse_frame.grid_remove()
 
     # Invoice-specific fields: PO and Terms only for Invoice
     if txn_type == "Invoice":
@@ -230,9 +238,10 @@ def save_log_level_setting(app):
     new_level = app.log_level_combo.get()
     AppConfig.save_log_level(new_level)
 
-    # Log confirmation to both tabs
+    # Log confirmation to create tab (and monitor tab if enabled)
     app._log_create(f"✓ Log level set to: {new_level}", LOG_MINIMAL)
-    app._log_monitor(f"✓ Log level set to: {new_level}", LOG_MINIMAL)
+    if app.monitoring_enabled:
+        app._log_monitor(f"✓ Log level set to: {new_level}", LOG_MINIMAL)
 
     # Show detailed explanation in a message box
     if new_level == "MINIMAL":

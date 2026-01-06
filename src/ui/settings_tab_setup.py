@@ -237,6 +237,52 @@ def setup_settings_tab(app):
     # Separator
     ttk.Separator(content, orient='horizontal').pack(fill='x', pady=SPACING_LG)
 
+    # Performance Options Section
+    perf_frame = ttk.LabelFrame(content, text="Performance Options", padding=SPACING_MD)
+    perf_frame.pack(fill='x', pady=(0, SPACING_MD))
+
+    # Monitoring enabled checkbox
+    initial_monitoring_state = AppConfig.get_monitoring_enabled()
+    app.monitoring_enabled_var = tk.BooleanVar(value=initial_monitoring_state)
+
+    def on_monitoring_toggle():
+        enabled = app.monitoring_enabled_var.get()
+        AppConfig.save_monitoring_enabled(enabled)
+        # Show restart notice if changed from initial state
+        if enabled != initial_monitoring_state:
+            app.monitoring_restart_label.config(text="Restart required to apply changes")
+        else:
+            app.monitoring_restart_label.config(text="")
+
+    monitoring_check = ttk.Checkbutton(
+        perf_frame,
+        text="Enable monitoring tab",
+        variable=app.monitoring_enabled_var,
+        command=on_monitoring_toggle
+    )
+    monitoring_check.pack(anchor='w', pady=SPACING_SM)
+
+    # Help text
+    monitoring_help_text = ttk.Label(
+        perf_frame,
+        text="Disable monitoring on low-resource VMs to reduce overhead.\nRequires app restart to take effect.",
+        font=FONT_CAPTION,
+        foreground='gray',
+        justify='left'
+    )
+    monitoring_help_text.pack(anchor='w', pady=(0, SPACING_SM))
+
+    # Restart notice label
+    app.monitoring_restart_label = ttk.Label(
+        perf_frame,
+        text="",
+        foreground='orange'
+    )
+    app.monitoring_restart_label.pack(anchor='w')
+
+    # Separator
+    ttk.Separator(content, orient='horizontal').pack(fill='x', pady=SPACING_LG)
+
     # Developer Options Section
     dev_frame = ttk.LabelFrame(content, text="Developer Options", padding=SPACING_MD)
     dev_frame.pack(fill='x', pady=(0, SPACING_MD))
