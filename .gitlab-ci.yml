@@ -1,0 +1,43 @@
+stages:
+  - build
+  - release
+
+variables:
+  PYTHON_PATH: "C:\\Users\\Nick Chamberlain\\AppData\\Local\\Programs\\Python\\Python313-32\\python.exe"
+
+build:
+  stage: build
+  tags:
+    - windows
+  script:
+    - '& $env:PYTHON_PATH -m pip install --upgrade pip'
+    - '& $env:PYTHON_PATH -m pip install -r requirements.txt'
+    - '& $env:PYTHON_PATH -m pip install pyinstaller>=6.0.0'
+    - '& $env:PYTHON_PATH -m PyInstaller --clean QBDTestTool.spec'
+  artifacts:
+    paths:
+      - dist/QBDTestTool.exe
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "qbfc"
+    - if: $CI_COMMIT_TAG
+
+release:
+  stage: release
+  tags:
+    - windows
+  needs:
+    - build
+  script:
+    - echo "Creating release for $CI_COMMIT_TAG"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "QBDTestTool $CI_COMMIT_TAG"
+    description: "Automated release for $CI_COMMIT_TAG"
+    assets:
+      links:
+        - name: "QBDTestTool.exe"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/QBDTestTool.exe?job=build"
+  rules:
+    - if: $CI_COMMIT_TAG
