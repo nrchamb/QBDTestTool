@@ -33,6 +33,53 @@ def setup_settings_tab(app):
     content = ttk.Frame(container, padding=SPACING_XL)
     content.pack(fill='x')
 
+    # Application Mode Section (at top)
+    mode_frame = ttk.LabelFrame(content, text="Application Mode", padding=SPACING_MD)
+    mode_frame.pack(fill='x', pady=(0, SPACING_MD))
+
+    # Mode radio buttons
+    app.mode_var = tk.StringVar(value=app.current_mode)
+
+    def on_mode_change():
+        new_mode = app.mode_var.get()
+        if new_mode != app.current_mode:
+            app.switch_mode(new_mode)
+
+    mode_radio_frame = ttk.Frame(mode_frame)
+    mode_radio_frame.pack(fill='x')
+
+    testing_radio = ttk.Radiobutton(
+        mode_radio_frame,
+        text="Testing Mode",
+        variable=app.mode_var,
+        value='testing',
+        command=on_mode_change
+    )
+    testing_radio.pack(side='left', padx=(0, SPACING_LG))
+
+    accounting_radio = ttk.Radiobutton(
+        mode_radio_frame,
+        text="Accounting Mode",
+        variable=app.mode_var,
+        value='accounting',
+        command=on_mode_change
+    )
+    accounting_radio.pack(side='left')
+
+    # Mode descriptions
+    mode_help_text = ttk.Label(
+        mode_frame,
+        text="• Testing: Generate random test data for QuickBooks\n"
+             "• Accounting: Paste customer data and create in QuickBooks",
+        font=FONT_CAPTION,
+        foreground='gray',
+        justify='left'
+    )
+    mode_help_text.pack(anchor='w', pady=(SPACING_MD, 0))
+
+    # Separator
+    ttk.Separator(content, orient='horizontal').pack(fill='x', pady=SPACING_LG)
+
     # Settings section
     settings_frame = ttk.LabelFrame(content, text="Log Verbosity", padding=SPACING_MD)
     settings_frame.pack(fill='x', pady=(0, SPACING_MD))

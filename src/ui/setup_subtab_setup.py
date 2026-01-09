@@ -13,15 +13,19 @@ from .ui_constants import (
 from persistence import SessionManager
 
 
-def setup_setup_subtab(app):
+def setup_setup_subtab(app, parent=None):
     """
     Setup the Setup subtab for loading customers and items.
 
     Args:
         app: Reference to the main QBDTestToolApp instance
+        parent: Optional parent frame. If None, uses app.setup_subtab
     """
+    # Use provided parent or default to app.setup_subtab
+    parent_frame = parent if parent is not None else app.setup_subtab
+
     # Create scrollable frame
-    canvas, scrollbar, container = create_scrollable_frame(app.setup_subtab)
+    canvas, scrollbar, container = create_scrollable_frame(parent_frame)
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
 

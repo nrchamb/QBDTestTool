@@ -46,6 +46,9 @@ DEFAULT_CONFIG = {
     "features": {
         "monitoring_enabled": True,  # Enable monitoring tab (disable for low-resource VMs)
         "allow_item_reuse": False  # Allow same item multiple times in a transaction
+    },
+    "paste_mappings": {
+        "custom_labels": {}  # User-defined label -> field mappings (lowercase label -> field name)
     }
 }
 
@@ -345,3 +348,57 @@ class AppConfig:
             config['features'] = {}
         config['features']['allow_item_reuse'] = enabled
         return AppConfig.save_config(config)
+
+    @staticmethod
+    def get_custom_field_mappings() -> Dict[str, str]:
+        """
+        Get user-defined custom field mappings for paste parsing.
+
+        Returns:
+            Dict mapping lowercase label to field name
+        """
+        config = AppConfig.load_config()
+        return config.get('paste_mappings', {}).get('custom_labels', {})
+
+    @staticmethod
+    def save_custom_field_mapping(label: str, field: str) -> bool:
+        """
+        Save a custom field mapping for paste parsing.
+
+        Args:
+            label: The label text (will be stored lowercase)
+            field: The internal field name to map to
+
+        Returns:
+            True if successful
+        """
+        config = AppConfig.load_config()
+        if 'paste_mappings' not in config:
+            config['paste_mappings'] = {'custom_labels': {}}
+        if 'custom_labels' not in config['paste_mappings']:
+            config['paste_mappings']['custom_labels'] = {}
+
+        config['paste_mappings']['custom_labels'][label.lower()] = field
+        return AppConfig.save_config(config)
+
+    @staticmethod
+    def remove_custom_field_mapping(label: str) -> bool:
+        """
+        Remove a custom field mapping.
+
+        Args:
+            label: The label text to remove (case-insensitive)
+
+        Returns:
+            True if successful
+        """
+        config = AppConfig.load_config()
+        custom_labels = config.get('paste_mappings', {}).get('custom_labels', {})
+
+        label_lower = label.lower()
+        if label_lower in custom_labels:
+            del custom_labels[label_lower]
+            config['paste_mappings']['custom_labels'] = custom_labels
+            return AppConfig.save_config(config)
+
+        return True  # Already not present

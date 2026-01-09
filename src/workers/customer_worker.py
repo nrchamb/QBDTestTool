@@ -204,6 +204,11 @@ def create_customer_worker(app, email: str, field_config: dict, manual_values: d
         disconnect_qb()
         # Auto-save session after creating customers
         app.root.after(0, lambda: app._auto_save_session())
-        # Re-enable button and update status
-        app.root.after(0, lambda: app.create_customer_btn.config(state='normal'))
+        # Re-enable button and update status (handle both Testing and Accounting modes)
+        def reenable_button():
+            if hasattr(app, 'create_customer_btn') and app.create_customer_btn:
+                app.create_customer_btn.config(state='normal')
+            if hasattr(app, 'acct_create_btn') and app.acct_create_btn:
+                app.acct_create_btn.config(state='normal')
+        app.root.after(0, reenable_button)
         app.root.after(0, lambda: app.status_bar.config(text="Ready"))

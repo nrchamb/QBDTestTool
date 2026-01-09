@@ -289,3 +289,60 @@ def save_persistence_settings(app):
     AppConfig.save_persistence_settings(
         auto_load=app.auto_load_var.get()
     )
+
+
+def clear_paste_fields(app):
+    """
+    Clear paste text widget and all customer form fields, re-enable random checkboxes.
+
+    Args:
+        app: Reference to the main QBDTestToolApp instance
+    """
+    # Clear paste text
+    if hasattr(app, 'paste_text'):
+        app.paste_text.delete('1.0', 'end')
+        app.paste_status_label.config(text="", foreground='gray')
+
+    # Clear email
+    app.customer_email.delete(0, 'end')
+
+    # Clear ISO
+    if hasattr(app, 'customer_iso'):
+        app.customer_iso.config(state='normal')
+        app.customer_iso.delete(0, 'end')
+        app.customer_iso.config(state='readonly')
+
+    # Clear CID
+    if hasattr(app, 'customer_cid'):
+        app.customer_cid.delete(0, 'end')
+
+    # Clear simple fields and re-enable random
+    app.random_first_name.set(True)
+    app.customer_first_name.delete(0, 'end')
+
+    app.random_last_name.set(True)
+    app.customer_last_name.delete(0, 'end')
+
+    app.random_company.set(True)
+    app.customer_company.delete(0, 'end')
+
+    app.random_phone.set(True)
+    app.customer_phone.delete(0, 'end')
+
+    # Clear billing address and re-enable random
+    app.random_billing_address.set(True)
+    app.customer_bill_addr1.delete(0, 'end')
+    app.customer_bill_city.delete(0, 'end')
+    app.customer_bill_state.delete(0, 'end')
+    app.customer_bill_zip.delete(0, 'end')
+
+    # Clear shipping address and re-enable random
+    app.random_shipping_address.set(True)
+    app.customer_ship_addr1.delete(0, 'end')
+    app.customer_ship_city.delete(0, 'end')
+    app.customer_ship_state.delete(0, 'end')
+    app.customer_ship_zip.delete(0, 'end')
+
+    # Clear notes
+    if hasattr(app, 'customer_notes'):
+        app.customer_notes.delete('1.0', 'end')

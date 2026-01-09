@@ -5,16 +5,16 @@ Customer subtab setup for QuickBooks Desktop Test Tool.
 
 import tkinter as tk
 from tkinter import ttk
-from actions.customer_actions import create_customer
+from actions.customer_actions import create_customer, parse_and_populate_from_paste
 from actions.ui_utility_actions import (
     select_all_customer_fields, clear_all_customer_fields,
     update_customer_calculation, toggle_billing_address_fields,
-    toggle_shipping_address_fields
+    toggle_shipping_address_fields, clear_paste_fields
 )
 from .ui_utils import create_scrollable_frame
 from .ui_constants import (
     SPACING_XS, SPACING_SM, SPACING_MD, SPACING_LG, SPACING_XL,
-    FONT_BODY, FONT_BOLD, ENTRY_WIDTH_LONG, SPINBOX_WIDTH_MEDIUM, TEXT_WRAPLENGTH
+    FONT_BODY, FONT_BOLD, ENTRY_WIDTH_LONG, ENTRY_WIDTH_SHORT, SPINBOX_WIDTH_MEDIUM, TEXT_WRAPLENGTH
 )
 
 
@@ -41,6 +41,35 @@ def setup_customer_subtab(app):
         wraplength=TEXT_WRAPLENGTH
     ).pack(pady=(0, SPACING_SM))
 
+    # Paste section
+    paste_frame = ttk.LabelFrame(content, text="Paste Customer Data", padding=SPACING_SM)
+    paste_frame.pack(fill='x', pady=(0, SPACING_MD))
+
+    # Text widget for pasting
+    app.paste_text = tk.Text(paste_frame, height=4, width=60)
+    app.paste_text.pack(fill='x', pady=(0, SPACING_XS))
+
+    # Paste buttons and status
+    paste_btn_frame = ttk.Frame(paste_frame)
+    paste_btn_frame.pack(fill='x')
+
+    app.parse_paste_btn = ttk.Button(
+        paste_btn_frame,
+        text="Parse & Preview",
+        command=lambda: parse_and_populate_from_paste(app)
+    )
+    app.parse_paste_btn.pack(side='left', padx=(0, SPACING_SM))
+
+    app.clear_paste_btn = ttk.Button(
+        paste_btn_frame,
+        text="Clear All",
+        command=lambda: clear_paste_fields(app)
+    )
+    app.clear_paste_btn.pack(side='left')
+
+    app.paste_status_label = ttk.Label(paste_btn_frame, text="", foreground='gray')
+    app.paste_status_label.pack(side='left', padx=(SPACING_MD, 0))
+
     # Create button at top for quick access
     app.create_customer_btn = ttk.Button(
         content,
@@ -60,6 +89,20 @@ def setup_customer_subtab(app):
     ttk.Label(form_frame, text="(required)").grid(row=row, column=1, sticky='w', pady=SPACING_SM)
     app.customer_email = ttk.Entry(form_frame, width=ENTRY_WIDTH_LONG)
     app.customer_email.grid(row=row, column=2, pady=SPACING_SM, padx=SPACING_SM, sticky='w')
+    row += 1
+
+    # ISO (read-only reference number from parsed data)
+    ttk.Label(form_frame, text="ISO:", font=FONT_BODY).grid(row=row, column=0, sticky='w', pady=SPACING_SM, padx=(0, SPACING_MD))
+    ttk.Label(form_frame, text="(reference)").grid(row=row, column=1, sticky='w', pady=SPACING_SM)
+    app.customer_iso = ttk.Entry(form_frame, width=ENTRY_WIDTH_SHORT, state='readonly')
+    app.customer_iso.grid(row=row, column=2, pady=SPACING_SM, padx=SPACING_SM, sticky='w')
+    row += 1
+
+    # CID (Account Number)
+    ttk.Label(form_frame, text="CID:", font=FONT_BODY).grid(row=row, column=0, sticky='w', pady=SPACING_SM, padx=(0, SPACING_MD))
+    ttk.Label(form_frame, text="(Account #)").grid(row=row, column=1, sticky='w', pady=SPACING_SM)
+    app.customer_cid = ttk.Entry(form_frame, width=ENTRY_WIDTH_SHORT)
+    app.customer_cid.grid(row=row, column=2, pady=SPACING_SM, padx=SPACING_SM, sticky='w')
     row += 1
 
     # Separator
@@ -202,6 +245,15 @@ def setup_customer_subtab(app):
     # Bind shipping address checkbox
     app.random_shipping_address.trace_add('write', lambda *args: toggle_shipping_address_fields(app))
     toggle_shipping_address_fields(app)
+
+    # Notes section
+    ttk.Separator(form_frame, orient='horizontal').grid(row=row, column=0, columnspan=3, sticky='ew', pady=SPACING_MD)
+    row += 1
+
+    ttk.Label(form_frame, text="Notes:", font=FONT_BODY).grid(row=row, column=0, sticky='nw', pady=SPACING_SM, padx=(0, SPACING_MD))
+    app.customer_notes = tk.Text(form_frame, height=3, width=40)
+    app.customer_notes.grid(row=row, column=2, pady=SPACING_SM, padx=SPACING_SM, sticky='w')
+    row += 1
 
     # Buttons
     button_frame = ttk.Frame(content)

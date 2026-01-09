@@ -132,6 +132,16 @@ class CustomerGenerator:
             if shipping_addr:
                 customer_data['shipping_address'] = shipping_addr
 
+        # Account Number (CID) - pass through from manual values only
+        account_number = manual_values.get('account_number')
+        if account_number:
+            customer_data['account_number'] = account_number
+
+        # Notes - pass through from manual values only
+        notes = manual_values.get('notes')
+        if notes:
+            customer_data['notes'] = notes
+
         return customer_data
 
     @staticmethod

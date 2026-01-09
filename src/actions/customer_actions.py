@@ -7,6 +7,8 @@ Extracted from app.py to reduce monolithic file size.
 import threading
 from tkinter import messagebox
 from workers import create_customer_worker
+from actions.paste_parser import parse_pasted_text
+from config import AppConfig
 
 
 def update_customer_combo(app):
@@ -156,6 +158,17 @@ def create_customer(app):
     else:
         manual_values['shipping_address'] = None
 
+    # Collect CID (Account Number) if provided
+    cid = app.customer_cid.get().strip() if hasattr(app, 'customer_cid') else ''
+    if cid:
+        manual_values['account_number'] = cid
+
+    # Collect Notes if provided
+    if hasattr(app, 'customer_notes'):
+        notes = app.customer_notes.get('1.0', 'end-1c').strip()
+        if notes:
+            manual_values['notes'] = notes
+
     # Collect job configuration
     try:
         num_jobs = int(app.num_jobs.get() or 0)
@@ -176,3 +189,126 @@ def create_customer(app):
         daemon=True
     )
     thread.start()
+
+
+def parse_and_populate_from_paste(app):
+    """
+    Parse pasted text and show preview dialog, then populate customer fields.
+
+    Args:
+        app: Reference to the main QBDTestToolApp instance
+    """
+    # Get pasted text
+    paste_text = app.paste_text.get('1.0', 'end-1c').strip()
+
+    if not paste_text:
+        messagebox.showinfo("No Data", "Please paste customer data first.")
+        return
+
+    # Get custom mappings from config
+    custom_mappings = AppConfig.get_custom_field_mappings()
+
+    # Parse the text
+    result = parse_pasted_text(paste_text, custom_mappings)
+
+    if not result['success'] and not result.get('unrecognized'):
+        # Nothing parsed at all
+        messagebox.showwarning(
+            "Parse Failed",
+            "Could not parse any fields from the pasted text.\n\n"
+            "Expected format:\nLabel: Value\nLabel: Value\n..."
+        )
+        return
+
+    # Show preview dialog
+    from ui.parse_preview_dialog import ParsePreviewDialog
+    dialog = ParsePreviewDialog(app.root, result)
+    final_data = dialog.show()
+
+    if final_data is None:
+        # User cancelled
+        app.paste_status_label.config(text="Cancelled", foreground='gray')
+        return
+
+    # Populate form fields with parsed data
+    _populate_customer_fields(app, final_data)
+
+    # Update status
+    field_count = len(final_data)
+    app.paste_status_label.config(
+        text=f"Populated {field_count} field(s)",
+        foreground='green'
+    )
+
+
+def _populate_customer_fields(app, data):
+    """
+    Populate customer form fields from parsed data.
+
+    Args:
+        app: Reference to the main QBDTestToolApp instance
+        data: Dict of field_name -> value
+    """
+    # Email
+    if 'email' in data:
+        app.customer_email.delete(0, 'end')
+        app.customer_email.insert(0, data['email'])
+
+    # ISO (read-only)
+    if 'iso' in data:
+        app.customer_iso.config(state='normal')
+        app.customer_iso.delete(0, 'end')
+        app.customer_iso.insert(0, data['iso'])
+        app.customer_iso.config(state='readonly')
+
+    # CID (Account Number)
+    if 'account_number' in data:
+        app.customer_cid.delete(0, 'end')
+        app.customer_cid.insert(0, data['account_number'])
+
+    # First Name
+    if 'first_name' in data:
+        app.random_first_name.set(False)  # Disable random
+        app.customer_first_name.delete(0, 'end')
+        app.customer_first_name.insert(0, data['first_name'])
+
+    # Last Name
+    if 'last_name' in data:
+        app.random_last_name.set(False)
+        app.customer_last_name.delete(0, 'end')
+        app.customer_last_name.insert(0, data['last_name'])
+
+    # Company
+    if 'company' in data:
+        app.random_company.set(False)
+        app.customer_company.delete(0, 'end')
+        app.customer_company.insert(0, data['company'])
+
+    # Phone
+    if 'phone' in data:
+        app.random_phone.set(False)
+        app.customer_phone.delete(0, 'end')
+        app.customer_phone.insert(0, data['phone'])
+
+    # Billing Address fields
+    has_billing = any(k in data for k in ['bill_addr1', 'bill_city', 'bill_state', 'bill_zip'])
+    if has_billing:
+        app.random_billing_address.set(False)
+
+        if 'bill_addr1' in data:
+            app.customer_bill_addr1.delete(0, 'end')
+            app.customer_bill_addr1.insert(0, data['bill_addr1'])
+        if 'bill_city' in data:
+            app.customer_bill_city.delete(0, 'end')
+            app.customer_bill_city.insert(0, data['bill_city'])
+        if 'bill_state' in data:
+            app.customer_bill_state.delete(0, 'end')
+            app.customer_bill_state.insert(0, data['bill_state'])
+        if 'bill_zip' in data:
+            app.customer_bill_zip.delete(0, 'end')
+            app.customer_bill_zip.insert(0, data['bill_zip'])
+
+    # Notes
+    if 'notes' in data:
+        app.customer_notes.delete('1.0', 'end')
+        app.customer_notes.insert('1.0', data['notes'])

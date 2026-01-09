@@ -26,6 +26,8 @@ from ui.monitor_tab_setup import setup_monitor_tab
 from ui.verify_tab_setup import setup_verify_tab
 from ui.settings_tab_setup import setup_settings_tab
 from ui.setup_subtab_setup import setup_setup_subtab
+from ui.accounting_tab_setup import setup_accounting_tab
+from ui.mode_selection_dialog import show_mode_selection
 from app_logging import log_create, log_monitor
 from ui.ui_utils import create_scrollable_frame
 from ui.ui_constants import SPACING_SM
@@ -41,8 +43,9 @@ from workers import (
 class QBDTestToolApp:
     """Main application class."""
 
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, mode: str = 'testing', manager_started: bool = False):
         self.root = root
+        self.current_mode = mode  # 'testing' or 'accounting'
         self.root.title("QBD Test Tool")
 
         # Load and apply saved window geometry
@@ -67,8 +70,9 @@ class QBDTestToolApp:
         self.monitor_thread: Optional[threading.Thread] = None
         self.monitoring_stop_flag = False
 
-        # Start connection manager process
-        start_manager()
+        # Start connection manager process (if not already started)
+        if not manager_started:
+            start_manager()
 
         # Initialize tray icon
         self.tray_icon = TrayIconManager(
@@ -99,18 +103,37 @@ class QBDTestToolApp:
         self._check_and_load_session()
 
     def _setup_ui(self):
-        """Setup the user interface."""
+        """Setup the user interface based on current mode."""
         # Create notebook (tabs)
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill='both', expand=True, padx=SPACING_SM, pady=SPACING_SM)
 
+        # Get monitoring setting (used in testing mode)
+        self.monitoring_enabled = AppConfig.get_monitoring_enabled()
+
+        # Setup tabs based on mode
+        if self.current_mode == 'testing':
+            self._setup_testing_tabs()
+        else:
+            self._setup_accounting_tabs()
+
+        # Settings tab (always shown, added last)
+        self.settings_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.settings_tab, text='Settings')
+        setup_settings_tab(self)
+
+        # Status bar
+        self.status_bar = tk.Label(self.root, text="Ready", bd=1, relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def _setup_testing_tabs(self):
+        """Setup tabs for Testing mode."""
         # Tab 1: Create Data
         self.create_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.create_tab, text='Create Data')
         setup_create_tab(self)
 
         # Tab 2: Monitor Transactions (conditional based on config)
-        self.monitoring_enabled = AppConfig.get_monitoring_enabled()
         if self.monitoring_enabled:
             self.monitor_tab = ttk.Frame(self.notebook)
             self.notebook.add(self.monitor_tab, text='Monitor Transactions')
@@ -124,14 +147,64 @@ class QBDTestToolApp:
             self.monitor_tab = None
             self.verify_tab = None
 
-        # Tab 4: Settings
-        self.settings_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.settings_tab, text='Settings')
-        setup_settings_tab(self)
+        # Initialize accounting tab reference as None
+        self.accounting_tab = None
+        self.setup_standalone_tab = None
 
-        # Status bar
-        self.status_bar = tk.Label(self.root, text="Ready", bd=1, relief=tk.SUNKEN, anchor=tk.W)
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+    def _setup_accounting_tabs(self):
+        """Setup tabs for Accounting mode."""
+        # Initialize customer_combos (empty in accounting mode - no customer dropdowns)
+        self.customer_combos = []
+
+        # Tab 1: Accounting (customer creation from paste)
+        self.accounting_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.accounting_tab, text='Accounting')
+        setup_accounting_tab(self)
+
+        # Tab 2: Setup (load data from QB)
+        self.setup_standalone_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.setup_standalone_tab, text='Setup')
+        setup_setup_subtab(self, parent=self.setup_standalone_tab)
+
+        # Initialize testing tab references as None
+        self.create_tab = None
+        self.monitor_tab = None
+        self.verify_tab = None
+
+    def switch_mode(self, new_mode: str):
+        """
+        Switch between Testing and Accounting modes.
+
+        Args:
+            new_mode: 'testing' or 'accounting'
+        """
+        if new_mode == self.current_mode:
+            return
+
+        self.current_mode = new_mode
+
+        # Remember current Settings tab
+        settings_tab_widget = self.settings_tab
+
+        # Remove all tabs from notebook
+        for tab_id in list(self.notebook.tabs()):
+            self.notebook.forget(tab_id)
+
+        # Build new tabs based on mode
+        if new_mode == 'testing':
+            self._setup_testing_tabs()
+        else:
+            self._setup_accounting_tabs()
+
+        # Re-add Settings tab at end
+        self.notebook.add(settings_tab_widget, text='Settings')
+
+        # Select first tab
+        self.notebook.select(0)
+
+        # Update status bar
+        mode_display = "Testing" if new_mode == 'testing' else "Accounting"
+        self.status_bar.config(text=f"Switched to {mode_display} mode")
 
     def _create_scrollable_frame(self, parent):
         """Create a scrollable frame (wrapper for ui_utils.create_scrollable_frame)."""
@@ -378,13 +451,44 @@ class QBDTestToolApp:
 
 def main():
     """Main entry point."""
-    # Check for existing instance
-    from trayapp import check_and_acquire_lock
-    if not check_and_acquire_lock():
-        return  # Exit if another instance is running
+    # Show splash screen immediately for visual feedback
+    from ui.splash_screen import show_splash
+    splash = show_splash()
 
+    try:
+        # Check for existing instance
+        splash.update_status("Checking for existing instance...")
+        from trayapp import check_and_acquire_lock
+        if not check_and_acquire_lock():
+            splash.close()
+            return  # Exit if another instance is running
+
+        splash.update_status("Ready")
+    finally:
+        # Close splash before mode dialog
+        splash.close()
+
+    # Show mode selection dialog
+    selected_mode = show_mode_selection()
+
+    # Exit if user cancelled
+    if selected_mode is None:
+        return
+
+    # Show splash again during heavy initialization
+    splash = show_splash()
+    splash.update_status("Starting services...")
+
+    try:
+        # Start connection manager (the slow part)
+        start_manager()
+        splash.update_status("Initializing...")
+    finally:
+        splash.close()
+
+    # Create main application with selected mode (manager already started)
     root = tk.Tk()
-    app = QBDTestToolApp(root)
+    app = QBDTestToolApp(root, mode=selected_mode, manager_started=True)
     root.mainloop()
 
 

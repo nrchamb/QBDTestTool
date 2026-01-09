@@ -337,6 +337,14 @@ class QBFCOperations:
         if 'email' in customer_data:
             customer_add_rq.Email.SetValue(customer_data['email'])
 
+        # Account Number (CID)
+        if 'account_number' in customer_data:
+            customer_add_rq.AccountNumber.SetValue(customer_data['account_number'])
+
+        # Notes
+        if 'notes' in customer_data:
+            customer_add_rq.Notes.SetValue(customer_data['notes'])
+
         # Job status (for jobs only) - ENJobStatus enum
         if 'job_status' in customer_data:
             status_str = customer_data['job_status']
