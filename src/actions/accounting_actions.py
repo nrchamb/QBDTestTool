@@ -42,23 +42,33 @@ def parse_and_populate_accounting(app):
         )
         return
 
-    # Show preview dialog
-    from ui.parse_preview_dialog import ParsePreviewDialog
-    dialog = ParsePreviewDialog(app.root, result)
-    final_data = dialog.show()
+    # Check if we have unrecognized fields
+    has_unrecognized = bool(result.get('unrecognized'))
 
-    if final_data is None:
-        # User cancelled
-        app.acct_paste_status.config(text="Cancelled", foreground='gray')
-        return
+    if has_unrecognized:
+        # Show preview dialog for mapping unrecognized fields
+        from ui.parse_preview_dialog import ParsePreviewDialog
+        dialog = ParsePreviewDialog(app.root, result)
+        final_data = dialog.show()
+
+        if final_data is None:
+            # User cancelled
+            app.acct_paste_status.config(text="Cancelled", foreground='gray')
+            return
+    else:
+        # All fields recognized - auto-populate without dialog
+        final_data = result.get('data', {})
 
     # Populate form fields
     _populate_accounting_fields(app, final_data)
 
     # Update status
     field_count = len(final_data)
+    status_msg = f"Populated {field_count} field(s)"
+    if not has_unrecognized:
+        status_msg += " (auto-mapped)"
     app.acct_paste_status.config(
-        text=f"Populated {field_count} field(s)",
+        text=status_msg,
         foreground='green'
     )
 

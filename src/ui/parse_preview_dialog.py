@@ -177,7 +177,7 @@ class ParsePreviewDialog:
         self.dialog.destroy()
 
     def _on_save_mappings(self):
-        """Save user-defined mappings to config."""
+        """Save user-defined mappings to config and apply to form."""
         saved_count = 0
 
         for label, var in self.mapping_vars.items():
@@ -196,12 +196,17 @@ class ParsePreviewDialog:
                     saved_count += 1
 
         if saved_count > 0:
-            # Show confirmation
+            # Show confirmation and apply
             from tkinter import messagebox
             messagebox.showinfo(
                 "Mappings Saved",
-                f"Saved {saved_count} custom mapping(s).\n\nThese will be used automatically for future pastes."
+                f"Saved {saved_count} custom mapping(s).\n\nApplying to form now. Future pastes will use these mappings automatically."
             )
+            # Also apply to form
+            self._on_apply()
+        else:
+            # No mappings selected - just apply
+            self._on_apply()
 
     def _on_apply(self):
         """Apply parsed data and close dialog."""
