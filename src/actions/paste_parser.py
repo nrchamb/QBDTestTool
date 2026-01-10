@@ -65,8 +65,18 @@ DEFAULT_FIELD_MAPPINGS = {
     'comments': 'notes',
     'comment': 'notes',
 
-    # Fields to ignore (recognized but not mapped)
-    'active': None,  # Status field - not needed
+    # Fields to ignore (recognized but not mapped - won't trigger unrecognized dialog)
+    'active': None,  # Status field
+    'iso': None,  # Display-only reference
+    'mid': None,  # Merchant ID - not needed in QB
+    'billing': None,  # Billing info label (not the address)
+    'country': None,  # Country - not typically used
+    'log mode': None,  # System field
+    'system log': None,  # System field
+    'billing pdf': None,  # Document reference
+    'acct rep': None,  # Account rep
+    'region': None,  # Region
+    'status': None,  # Status field
 }
 
 
@@ -129,11 +139,11 @@ def parse_pasted_text(text: str, custom_mappings: Optional[Dict[str, str]] = Non
 
 def _normalize_input(text: str) -> str:
     """
-    Normalize input text by inserting newlines before known field labels.
+    Normalize input text by inserting newlines before field labels.
 
     Handles various input formats:
     - Tab-separated: "Label:\\tValue\\tLabel:\\tValue"
-    - Single-line: "Label: Value Label: Value"
+    - Space-separated: "Label: Value     Label: Value"
     - Already formatted multi-line
 
     Args:
@@ -148,27 +158,15 @@ def _normalize_input(text: str) -> str:
     if colon_lines >= 3:
         return text  # Already well-formatted multi-line
 
-    # Build list of known labels to look for
-    known_labels = list(DEFAULT_FIELD_MAPPINGS.keys())
+    # Find ALL potential label patterns: word(s) followed by colon
+    # Labels must come after: start of string, multiple spaces (2+), or tab
+    # This prevents splitting on single spaces within values like "123 Main St"
+    # Pattern matches: "Label:" or "Two Word:" but not mid-value words
+    pattern = r'(?:^|(?<=  )|(?<=\t))([A-Za-z][A-Za-z ]*?)\s*:'
 
-    # Also add common labels that might appear but aren't mapped (for line splitting)
-    extra_labels = ['iso', 'acct rep', 'region', 'status', 'mid', 'billing', 'country',
-                    'log mode', 'system log', 'billing pdf']
-    all_labels = known_labels + [l for l in extra_labels if l not in known_labels]
-
-    # Sort labels by length (longest first) to match longer labels before shorter ones
-    all_labels_sorted = sorted(all_labels, key=len, reverse=True)
-
-    # Find all label matches with their positions in ORIGINAL text (before any modification)
-    # Each match is (start_pos, end_pos, label_with_colon)
     matches = []
-    for label in all_labels_sorted:
-        escaped_label = re.escape(label)
-        # Find label followed by optional space and colon
-        # Use word boundary OR after whitespace/tab/start OR digit-to-letter boundary
-        pattern = rf'(?i)(?:^|(?<=[\s\t])|(?<=\d)){escaped_label}\s*:'
-        for m in re.finditer(pattern, text):
-            matches.append((m.start(), m.end(), m.group()))
+    for m in re.finditer(pattern, text):
+        matches.append((m.start(), m.end()))
 
     # Sort by start position
     matches.sort(key=lambda x: x[0])
@@ -176,7 +174,7 @@ def _normalize_input(text: str) -> str:
     # Filter to keep only non-overlapping matches
     filtered = []
     last_end = -1
-    for start, end, label in matches:
+    for start, end in matches:
         if start >= last_end:
             filtered.append(start)
             last_end = end

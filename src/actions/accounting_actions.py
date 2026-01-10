@@ -42,35 +42,39 @@ def parse_and_populate_accounting(app):
         )
         return
 
-    # Check if we have unrecognized fields
+    # Auto-populate form with recognized fields immediately
+    recognized_data = result.get('data', {})
+    _populate_accounting_fields(app, recognized_data)
+
+    # Check if we have unrecognized fields that need mapping
     has_unrecognized = bool(result.get('unrecognized'))
 
     if has_unrecognized:
         # Show preview dialog for mapping unrecognized fields
         from ui.parse_preview_dialog import ParsePreviewDialog
         dialog = ParsePreviewDialog(app.root, result)
-        final_data = dialog.show()
+        additional_data = dialog.show()
 
-        if final_data is None:
-            # User cancelled
-            app.acct_paste_status.config(text="Cancelled", foreground='gray')
-            return
+        if additional_data:
+            # Add any newly mapped fields to the form
+            _populate_accounting_fields(app, additional_data)
+            field_count = len(additional_data)
+            app.acct_paste_status.config(
+                text=f"Populated {field_count} field(s)",
+                foreground='green'
+            )
+        else:
+            # User cancelled - form already has recognized fields
+            app.acct_paste_status.config(
+                text=f"Populated {len(recognized_data)} field(s) (some unrecognized)",
+                foreground='orange'
+            )
     else:
-        # All fields recognized - auto-populate without dialog
-        final_data = result.get('data', {})
-
-    # Populate form fields
-    _populate_accounting_fields(app, final_data)
-
-    # Update status
-    field_count = len(final_data)
-    status_msg = f"Populated {field_count} field(s)"
-    if not has_unrecognized:
-        status_msg += " (auto-mapped)"
-    app.acct_paste_status.config(
-        text=status_msg,
-        foreground='green'
-    )
+        # All fields recognized - already populated
+        app.acct_paste_status.config(
+            text=f"Populated {len(recognized_data)} field(s)",
+            foreground='green'
+        )
 
 
 def _populate_accounting_fields(app, data):
