@@ -131,8 +131,10 @@ def _normalize_input(text: str) -> str:
     """
     Normalize input text by inserting newlines before known field labels.
 
-    Handles single-line input where fields may have minimal or no spacing
-    between them (e.g., "54321Company: Acme" or "John Last Name: Doe").
+    Handles various input formats:
+    - Tab-separated: "Label:\\tValue\\tLabel:\\tValue"
+    - Single-line: "Label: Value Label: Value"
+    - Already formatted multi-line
 
     Args:
         text: Raw input text
@@ -150,48 +152,52 @@ def _normalize_input(text: str) -> str:
     known_labels = list(DEFAULT_FIELD_MAPPINGS.keys())
 
     # Also add common labels that might appear but aren't mapped (for line splitting)
-    extra_labels = ['iso', 'acct rep', 'region', 'status']
+    extra_labels = ['iso', 'acct rep', 'region', 'status', 'mid', 'billing', 'country',
+                    'log mode', 'system log', 'billing pdf']
     all_labels = known_labels + [l for l in extra_labels if l not in known_labels]
 
-    # Replace tabs and pipes first
-    normalized = text.replace('\t', '\n').replace('|', '\n')
+    # Sort labels by length (longest first) to match longer labels before shorter ones
+    all_labels_sorted = sorted(all_labels, key=len, reverse=True)
 
-    # Find all label matches with their positions
+    # Find all label matches with their positions in ORIGINAL text (before any modification)
     # Each match is (start_pos, end_pos, label_with_colon)
     matches = []
-    for label in all_labels:
+    for label in all_labels_sorted:
         escaped_label = re.escape(label)
         # Find label followed by optional space and colon
-        # Use word boundary OR digit-to-letter boundary (for cases like "54321Company:")
-        pattern = rf'(?i)(?:\b|(?<=\d)){escaped_label}\s*:'
-        for m in re.finditer(pattern, normalized):
+        # Use word boundary OR after whitespace/tab/start OR digit-to-letter boundary
+        pattern = rf'(?i)(?:^|(?<=[\s\t])|(?<=\d)){escaped_label}\s*:'
+        for m in re.finditer(pattern, text):
             matches.append((m.start(), m.end(), m.group()))
 
-    # Sort by start position, then by length (longer first) to handle overlaps
-    matches.sort(key=lambda x: (x[0], -(x[1] - x[0])))
+    # Sort by start position
+    matches.sort(key=lambda x: x[0])
 
-    # Filter to keep only non-overlapping matches (prefer longer/earlier ones)
+    # Filter to keep only non-overlapping matches
     filtered = []
     last_end = -1
     for start, end, label in matches:
         if start >= last_end:
             filtered.append(start)
             last_end = end
-        elif start == filtered[-1] if filtered else False:
-            # Same start position - keep the longer one (already sorted)
-            pass
 
-    # Insert newlines at the filtered positions (reverse order to preserve positions)
-    result = list(normalized)
+    # Insert newlines before each label (except first) in reverse order
+    result = list(text)
     for pos in sorted(filtered, reverse=True):
         if pos > 0:  # Don't insert at start
             result.insert(pos, '\n')
 
     normalized = ''.join(result)
 
-    # Clean up: remove empty lines and excessive whitespace
-    lines = [line.strip() for line in normalized.split('\n') if line.strip()]
-    return '\n'.join(lines)
+    # Now clean up: replace tabs within lines with spaces, remove empty lines
+    cleaned_lines = []
+    for line in normalized.split('\n'):
+        # Replace tabs with single space (keeps Label: Value together)
+        line = line.replace('\t', ' ').strip()
+        if line:
+            cleaned_lines.append(line)
+
+    return '\n'.join(cleaned_lines)
 
 
 def _parse_line_format(text: str, mappings: Dict[str, str]) -> Dict[str, Any]:
